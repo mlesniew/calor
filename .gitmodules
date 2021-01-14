@@ -1,0 +1,6 @@
+[submodule "lib/Arduino-Temperature-Control-Library"]
+	path = lib/Arduino-Temperature-Control-Library
+	url = https://github.com/milesburton/Arduino-Temperature-Control-Library.git
+[submodule "lib/OneWire"]
+	path = lib/OneWire
+	url = https://github.com/PaulStoffregen/OneWire.git
