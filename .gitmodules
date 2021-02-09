@@ -4,3 +4,6 @@
 [submodule "lib/OneWire"]
 	path = lib/OneWire
 	url = https://github.com/PaulStoffregen/OneWire.git
+[submodule "lib/WiFiManager"]
+	path = lib/WiFiManager
+	url = https://github.com/tzapu/WiFiManager.git
