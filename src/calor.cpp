@@ -1,10 +1,12 @@
 #include <Arduino.h>
 
-#include <Ticker.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+#include "led.h"
+#include "wificontrol.h"
 #include "shift_register.h"
+#include "wifi_readings.h"
 
 #define DS18B20_RESOLUTION 12
 #define DS18B20_CONVERSION_DELAY_MS (750 / (1 << (12 - DS18B20_RESOLUTION)))
@@ -12,27 +14,9 @@
 OneWire one_wire(D7);
 DallasTemperature sensors(&one_wire);
 
-class Led {
-    public:
-        Led(unsigned int pin, bool inverted) : pin(pin), inverted(inverted), step(0) {}
-        void begin() {
-            pinMode(pin, OUTPUT);
-            ticker.attach(3, [this](){ tick(); });
-        }
-
-    private:
-        void tick() {
-            step = 1 - step;
-            digitalWrite(pin, step);
-        }
-
-        const unsigned int pin;
-        const bool inverted;
-        unsigned int step;
-        Ticker ticker;
-};
-
-Led led(D4, true);
+BlinkingLed wifi_led(D4, 0, 91, true);
+WiFiControl wifi_control("Calor", wifi_led);
+WiFiReadings wifi_readings;
 
 bool setup_sensors() {
     DeviceAddress address;
@@ -81,10 +65,9 @@ void setup() {
     Serial.println(F("Calor " __DATE__ " " __TIME__));
 
     shift_register_init();
+    wifi_control.init(false);
 
-    led.begin();
-
-#if 1
+#if 0
     if (!setup_sensors()) {
         delay(1000);
         ESP.restart();
@@ -93,8 +76,13 @@ void setup() {
 }
 
 void loop() {
-    delay(1000);
-#if 1
+
+    Serial.println(WiFi.localIP());
+
+    wifi_readings.load("http://192.168.1.200/measurements.json");
+
+    delay(5000);
+#if 0
     sensors.requestTemperatures();
     float tempC = sensors.getTempCByIndex(0);
 
@@ -107,6 +95,7 @@ void loop() {
     }
 #endif
 
+#if 0
     {
         static uint8_t idx = 0;
         shift_register_write(idx, false);
@@ -114,4 +103,5 @@ void loop() {
         shift_register_write(idx, true);
         Serial.println(idx);
     }
+#endif
 }
