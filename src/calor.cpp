@@ -4,7 +4,7 @@
 #include <DallasTemperature.h>
 
 #include "led.h"
-#include "wificontrol.h"
+#include "wifi_control.h"
 #include "shift_register.h"
 #include "wifi_readings.h"
 
@@ -15,8 +15,14 @@ OneWire one_wire(D7);
 DallasTemperature sensors(&one_wire);
 
 BlinkingLed wifi_led(D4, 0, 91, true);
-WiFiControl wifi_control("Calor", wifi_led);
+WiFiControl wifi_control(wifi_led);
 WiFiReadings wifi_readings;
+ShiftRegister<1> shift_register(
+        D6,  // data pin
+        D5,  // clock pin
+        D0,  // latch pin
+        (uint8_t[1]){ 0b00001111, }  // inverted outputs
+        );
 
 bool setup_sensors() {
     DeviceAddress address;
@@ -64,8 +70,8 @@ void setup() {
     Serial.begin(9600);
     Serial.println(F("Calor " __DATE__ " " __TIME__));
 
-    shift_register_init();
-    wifi_control.init(false);
+    shift_register.init();
+    wifi_control.init();
 
 #if 0
     if (!setup_sensors()) {
@@ -76,12 +82,9 @@ void setup() {
 }
 
 void loop() {
-
     Serial.println(WiFi.localIP());
-
     wifi_readings.load("http://192.168.1.200/measurements.json");
 
-    delay(5000);
 #if 0
     sensors.requestTemperatures();
     float tempC = sensors.getTempCByIndex(0);
@@ -95,13 +98,5 @@ void loop() {
     }
 #endif
 
-#if 0
-    {
-        static uint8_t idx = 0;
-        shift_register_write(idx, false);
-        idx = (idx + 1) % 8;
-        shift_register_write(idx, true);
-        Serial.println(idx);
-    }
-#endif
+    delay(5000);
 }
