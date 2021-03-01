@@ -13,3 +13,6 @@
 [submodule "lib/arduino_utils"]
 	path = lib/arduino_utils
 	url = git@github.com:mlesniew/arduino_utils.git
+[submodule "lib/NTPClient"]
+	path = lib/NTPClient
+	url = git@github.com:arduino-libraries/NTPClient.git
