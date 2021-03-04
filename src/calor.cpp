@@ -1,20 +1,14 @@
 #include <Arduino.h>
 
-#include <DallasTemperature.h>
 #include <NTPClient.h>
-#include <OneWire.h>
 #include <WiFiUdp.h>
 
-#include "led.h"
-#include "shift_register.h"
-#include "wifi_control.h"
+#include <utils/led.h>
+#include <utils/shift_register.h>
+#include <utils/wifi_control.h>
 #include "wifi_readings.h"
 
-#define DS18B20_RESOLUTION 12
-#define DS18B20_CONVERSION_DELAY_MS (750 / (1 << (12 - DS18B20_RESOLUTION)))
-
-OneWire one_wire(D7);
-DallasTemperature sensors(&one_wire);
+#include "ds18b20.h"
 
 BlinkingLed wifi_led(D4, 0, 91, true);
 WiFiControl wifi_control(wifi_led);
@@ -29,65 +23,36 @@ ShiftRegister<1> shift_register(
 WiFiUDP ntp_udp;
 NTPClient ntp_client(ntp_udp, 60 * 60);
 
-bool setup_sensors() {
-    DeviceAddress address;
-    sensors.begin();
-
-    Serial.println(F("Searching for DS18B20 temperature sensors..."));
-    if (!sensors.getDeviceCount() || !sensors.getAddress(address, 0)) {
-        Serial.println(F("No device found."));
-        return false;
-    }
-
-    Serial.print(F("Found sensor: "));
-    for (uint8_t j = 0; j < 8; ++j) {
-        Serial.print(address[j] >> 4, HEX);
-        Serial.print(address[j] & 0xf, HEX);
-    }
-
-    Serial.print(F(": "));
-
-    if (!sensors.validFamily(address)) {
-        Serial.println(F("unsupported"));
-        return false;
-    }
-
-    Serial.println(F("ok"));
-
-    if (sensors.getResolution(address) != DS18B20_RESOLUTION) {
-        Serial.print(F("Setting resolution..."));
-        if (!sensors.setResolution(address, DS18B20_RESOLUTION)) {
-            Serial.println(F("failed"));
-            return false;
-        }
-        Serial.println(F("ok"));
-    } else {
-        Serial.println(F("Resolution already set."));
-    }
-
-    // use asynchronous requests
-    // sensors.setWaitForConversion(false);
-
-    return true;
-}
+TemperatureSensors temperature_sensors(D7);
+DeviceAddress temperature_sensor_address[4];
+uint8_t sensor_count;
 
 void setup() {
     Serial.begin(9600);
     Serial.println(F("Calor " __DATE__ " " __TIME__));
 
     shift_register.init();
+    temperature_sensors.init();
     wifi_control.init();
-    ntp_client.begin();
 
-#if 0
-    if (!setup_sensors()) {
-        delay(1000);
-        ESP.restart();
+    uint8_t idx = 0;
+    sensor_count = 0;
+    while ((idx = temperature_sensors.scan(temperature_sensor_address[sensor_count], idx)) && (sensor_count < 4)) {
+        Serial.print(F("Found sensor: "));
+        for (uint8_t j = 0; j < 8; ++j) {
+            Serial.print(temperature_sensor_address[sensor_count][j] >> 4, HEX);
+            Serial.print(temperature_sensor_address[sensor_count][j] & 0xf, HEX);
+        }
+        Serial.print(F("\n"));
+        ++sensor_count;
     }
-#endif
+
+    ntp_client.begin();
 }
 
 void loop() {
+    wifi_control.tick();
+
     Serial.println(WiFi.localIP());
     wifi_readings.load("http://192.168.1.200/measurements.json");
 
@@ -98,18 +63,10 @@ void loop() {
         Serial.println(ntp_client.getFormattedTime());
     }
 
-#if 0
-    sensors.requestTemperatures();
-    float tempC = sensors.getTempCByIndex(0);
+    temperature_sensors.update();
 
-    if(tempC != DEVICE_DISCONNECTED_C) 
-    {
-        Serial.print("Temperature for the device 1 (index 0) is: ");
-        Serial.println(tempC);
-    } else {
-        Serial.println("Error: Could not read temperature data");
+    for (uint8_t i = 0; i < sensor_count; ++i) {
+        Serial.print("Temperature: ");
+        Serial.println(temperature_sensors.read(temperature_sensor_address[i]));
     }
-#endif
-
-    delay(5000);
 }
