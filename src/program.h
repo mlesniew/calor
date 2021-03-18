@@ -2,37 +2,27 @@
 #define PROGRAM_H
 
 #include <stdint.h>
+#include "time.h"
 
 template <typename ValueType, uint8_t max_size>
 class TimeProgram {
     struct Element {
         Element() : time(0), value() {}
-        Element(uint8_t hour, uint8_t minute, ValueType value)
-            : time(construct_time(hour, minute)), value(value) {}
+        Element(const Time & time, const ValueType & value)
+            : time(time), value(value) {}
 
-        uint16_t time;  // 8 bit hour, 8 bit minute
+        Time time;
         ValueType value;
     };
 
     public:
         TimeProgram(): size(0) {}
 
-        ValueType get(uint8_t hour, uint8_t minute) const {
-            return get(construct_time(hour, minute));
+        bool add(const Time & time, const ValueType & value) {
+            return add(Element{time, value});
         }
 
-        bool add(uint8_t hour, uint8_t minute, ValueType value) {
-            if ((hour >= 24) || (minute >= 60))
-                return false;
-            return add(Element{hour, minute, value});
-        }
-
-    protected:
-        static constexpr uint16_t construct_time(uint8_t hour, uint8_t minute) {
-            return uint16_t(hour) << 8 | uint16_t(minute);
-        }
-
-        ValueType get(uint16_t time) const {
+        ValueType get(const Time & time) const {
             ValueType ret = 0;
             for (uint8_t i = 0; i < size; ++i) {
                 const auto & p = program[i];
@@ -43,6 +33,7 @@ class TimeProgram {
             return ret;
         }
 
+    protected:
         bool add(const Element & e) {
             // find index to insert e
             uint8_t i = 0;

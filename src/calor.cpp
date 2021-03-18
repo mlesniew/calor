@@ -62,10 +62,10 @@ class HotWaterController: public TimeProgram<uint8_t, 10>, public Periodic {
                 // we don't know the time
                 new_state = State::invalid;
             } else {
-                const auto t = ntp_clock.get_time();
-                h = t.get_hours();
-                m = t.get_minutes();
-                desired = get(h, m);
+                const auto time = ntp_clock.get_time();
+                h = time.get_hours();
+                m = time.get_minutes();
+                desired = get(time);
 
                 switch (state) {
                     case State::on:
@@ -130,10 +130,10 @@ void setup() {
     ntp_clock.init();
 
     hot_water_program.init();
-    hot_water_program.add(7, 0, 40);
-    hot_water_program.add(8, 30, 30);
-    hot_water_program.add(17, 30, 45);
-    hot_water_program.add(20, 30, 0);
+    hot_water_program.add(Time{7, 0}, 40);
+    hot_water_program.add(Time{8, 30}, 30);
+    hot_water_program.add(Time{17, 30}, 45);
+    hot_water_program.add(Time{20, 30}, 0);
 }
 
 

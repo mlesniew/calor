@@ -1,6 +1,8 @@
 #ifndef TIME_H
 #define TIME_H
 
+#include <stdint.h>
+
 struct Time {
     Time(uint16_t time) : time(time) {}
     Time(uint8_t hours, uint8_t minutes) : time(uint16_t(hours) << 8 | uint16_t(minutes)) {}
@@ -11,6 +13,30 @@ struct Time {
         return time & 0xff;
     }
     uint16_t time;
+
+    bool operator==(const Time & other) const {
+        return time == other.time;
+    }
+
+    bool operator!=(const Time & other) const {
+        return time != other.time;
+    }
+
+    bool operator<(const Time & other) const {
+        return time < other.time;
+    }
+
+    bool operator>(const Time & other) const {
+        return time > other.time;
+    }
+
+    bool operator<=(const Time & other) const {
+        return time <= other.time;
+    }
+
+    bool operator>=(const Time & other) const {
+        return time >= other.time;
+    }
 };
 
 #endif
