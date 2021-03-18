@@ -34,7 +34,8 @@ class HotWaterController: public TimeProgram<uint8_t, 10>, public Periodic {
     public:
         enum class State : uint8_t { off, on, invalid };
 
-        HotWaterController(double histeresis): Periodic(10), state(State::invalid), histeresis(histeresis) {}
+        HotWaterController(const Clock & clock, double histeresis):
+            Periodic(10), clock(clock), state(State::invalid), histeresis(histeresis) {}
 
         void init() {
             set_output(state);
@@ -58,11 +59,11 @@ class HotWaterController: public TimeProgram<uint8_t, 10>, public Periodic {
             } else if (reading <= 5) {
                 // start heating to avoid freezing
                 new_state = State::on;
-            } else if (!ntp_clock.ready()) {
+            } else if (!clock.ready()) {
                 // we don't know the time
                 new_state = State::invalid;
             } else {
-                const auto time = ntp_clock.get_time();
+                const auto time = clock.get_time();
                 h = time.get_hours();
                 m = time.get_minutes();
                 desired = get(time);
@@ -96,12 +97,13 @@ class HotWaterController: public TimeProgram<uint8_t, 10>, public Periodic {
             shift_register.write(3, state == State::on);
         }
 
+        const Clock & clock;
         State state;
         double histeresis;
 };
 
 
-HotWaterController hot_water_program(2.5);
+HotWaterController hot_water_program(ntp_clock, 2.5);
 
 
 void setup() {
