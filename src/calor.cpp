@@ -1,15 +1,13 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 
-#include <NTPClient.h>
-#include <WiFiUdp.h>
-
 #include <utils/led.h>
 #include <utils/periodic.h>
 #include <utils/shift_register.h>
 #include <utils/wifi_control.h>
 
 #include "program.h"
+#include "clock.h"
 #include "wifi_readings.h"
 #include "ds18b20.h"
 
@@ -28,46 +26,6 @@ ShiftRegister<1> shift_register(
 TemperatureSensors temperature_sensors(D7);
 DeviceAddress temperature_sensor_address[4];
 uint8_t sensor_count;
-
-struct Time {
-    Time(uint16_t time) : time(time) {}
-    Time(uint8_t hours, uint8_t minutes) : time(uint16_t(hours) << 8 | uint16_t(minutes)) {}
-    uint8_t get_hours() const {
-        return time >> 8;
-    }
-    uint8_t get_minutes() const {
-        return time & 0xff;
-    }
-    uint16_t time;
-};
-
-class Clock {
-
-    public:
-        Clock() : ntp_udp(), ntp_client(ntp_udp), have_time(false) {}
-
-        void init() {
-            ntp_client.begin();
-        }
-
-        void tick() {
-            have_time = have_time || ntp_client.update();
-        }
-
-        bool ready() const {
-            return have_time;
-        }
-
-        Time get_time() const {
-            auto hour_minute = (ntp_client.getEpochTime() / 60) % (24 * 60);
-            return Time(hour_minute / 60, hour_minute % 60);
-        }
-
-    protected:
-        WiFiUDP ntp_udp;
-        NTPClient ntp_client;
-        bool have_time;
-};
 
 Clock ntp_clock;
 
