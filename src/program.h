@@ -6,14 +6,14 @@
 
 template <typename ValueType, uint8_t max_size>
 class TimeProgram {
-    struct Element {
-        Element() : time(0), value() {}
-        Element(const Time & time, const ValueType & value)
-            : time(time), value(value) {}
+        struct Element {
+            Element() : time(0), value() {}
+            Element(const Time & time, const ValueType & value)
+                : time(time), value(value) {}
 
-        Time time;
-        ValueType value;
-    };
+            Time time;
+            ValueType value;
+        };
 
     public:
         TimeProgram(): size(0) {}
