@@ -16,3 +16,6 @@
 [submodule "lib/NTPClient"]
 	path = lib/NTPClient
 	url = git@github.com:arduino-libraries/NTPClient.git
+[submodule "lib/LiquidCrystal_I2C"]
+	path = lib/LiquidCrystal_I2C
+	url = https://github.com/johnrickman/LiquidCrystal_I2C.git

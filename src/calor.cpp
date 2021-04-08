@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <OneWire.h>
+#include <LiquidCrystal_I2C.h>
 
 #include <utils/led.h>
 #include <utils/shift_register.h>
@@ -31,22 +32,32 @@ Clock ntp_clock;
 HotWaterController hot_water_program(
     ntp_clock,
     temperature_sensor_controller,
-[](bool value) {
-    shift_register.write(3, value);
-},
-2.5);
+    [](bool value) {
+        shift_register.write(3, value);
+    },
+    2.5);
+
+LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 void setup() {
     Serial.begin(9600);
     Serial.println(F("Calor " __DATE__ " " __TIME__));
 
+    lcd.init();
+    lcd.backlight();
+
+    lcd.setCursor(0, 0);
+    lcd.print(F("Calor"));
+    lcd.setCursor(0, 1);
+    lcd.print(F("    " __DATE__));
+    lcd.setCursor(0, 2);
+    lcd.print(F("    " __TIME__));
+
     shift_register.init();
     temperature_sensor_controller.init();
-
     LittleFS.begin();
 
     wifi_control.init();
-
     ntp_clock.init();
 
     hot_water_program.init();
@@ -54,6 +65,8 @@ void setup() {
     hot_water_program.add(Time{8, 30}, 30);
     hot_water_program.add(Time{17, 30}, 45);
     hot_water_program.add(Time{20, 30}, 0);
+
+    lcd.clear();
 }
 
 
@@ -66,4 +79,44 @@ void loop() {
 
     temperature_sensor_controller.tick();
     hot_water_program.tick();
+
+    static Stopwatch stopwatch;
+
+    if (stopwatch.elapsed() > 1) {
+        stopwatch.reset();
+
+        lcd.setCursor(0, 0);
+        lcd.print("Water  ");
+
+        lcd.setCursor(0, 1);
+        lcd.printf("Temperature %6.1f\337C", hot_water_program.get_reading());
+
+        lcd.setCursor(0, 2);
+        lcd.printf("Desired     %6.1f\337C", hot_water_program.get_desired());
+
+        lcd.setCursor(15, 0);
+        if (!ntp_clock.ready()) {
+            lcd.print("??:??");
+        } else {
+            const auto time = ntp_clock.get_time();
+            lcd.printf("%02i:%02i", time.get_hours(), time.get_minutes());
+        }
+
+        lcd.setCursor(0, 3);
+        switch(hot_water_program.get_state()) {
+            case HotWaterController::State::on:
+                lcd.print(F("Heating on "));
+                break;
+
+            case HotWaterController::State::off:
+                lcd.print(F("Heating off"));
+                break;
+
+            case HotWaterController::State::invalid:
+                lcd.print(F("Error      "));
+                break;
+        }
+
+    }
+
 }

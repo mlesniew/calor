@@ -10,6 +10,12 @@ void HotWaterController::init() {
     set_output(state == State::on);
 }
 
+double HotWaterController::get_desired() const {
+    if (!clock.ready())
+        return 0;
+    return get(clock.get_time());
+}
+
 double HotWaterController::get_reading() const {
     return sensors.get_reading(0);
 }

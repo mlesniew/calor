@@ -18,7 +18,9 @@ class HotWaterController: public TimeProgram<uint8_t, 10>, public Periodic {
             double histeresis);
         void init();
         virtual double get_reading() const;
+        virtual double get_desired() const;
         void periodic_proc() override;
+        State get_state() const { return state; }
 
     protected:
         const std::function<void(bool)> set_output;
