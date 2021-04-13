@@ -7,6 +7,7 @@
 #include <utils/shift_register.h>
 #include <utils/wifi_control.h>
 
+#include "buttons.h"
 #include "clock.h"
 #include "wifi_readings.h"
 #include "temperature_sensor_controller.h"
@@ -38,6 +39,7 @@ HotWaterController hot_water_program(
     2.5);
 
 LiquidCrystal_I2C lcd(0x27, 20, 4);
+Buttons buttons;
 
 void setup() {
     Serial.begin(9600);
@@ -68,7 +70,6 @@ void setup() {
 
     lcd.clear();
 }
-
 
 void loop() {
     wifi_control.tick();
@@ -116,7 +117,7 @@ void loop() {
                 lcd.print(F("Error      "));
                 break;
         }
-
     }
 
+    buttons.tick();
 }
