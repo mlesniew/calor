@@ -5,34 +5,18 @@ void Buttons::tick() {
     if (button != last_button) {
         button_hold_time.reset();
         last_button = button;
-        event_fired = false;
-    } else if (event_fired || button == Button::none) {
-        return;
-    } else if (button_hold_time.elapsed_millis() > 24) {
-        on_press(button);
-        event_fired = true;
+        state = State::no_event;
+    } else if (button != Button::none && state == State::no_event && button_hold_time.elapsed_millis() >= 4) {
+        state = State::event_pending;
     }
 }
 
-void Buttons::on_press(Button button) {
-    Serial.print("Button pressed: ");
-    switch (button) {
-        case Button::left:
-            Serial.println("Left");
-            break;
-        case Button::right:
-            Serial.println("Right");
-            break;
-        case Button::up:
-            Serial.println("Up");
-            break;
-        case Button::down:
-            Serial.println("Down");
-            break;
-        case Button::ok:
-            Serial.println("OK");
-            break;
-    }
+Button Buttons::get_button() {
+    if (state != State::event_pending)
+        return Button::none;
+
+    state = State::event_fired;
+    return last_button;
 }
 
 Button Buttons::get_current_button() {

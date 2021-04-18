@@ -7,16 +7,17 @@
 enum class Button : uint8_t { none, up, down, left, right, ok };
 
 class Buttons {
+    enum class State { no_event, event_pending, event_fired };
     public:
-        Buttons(): last_button(Button::none), event_fired(false) {}
+        Buttons(): last_button(Button::none), state(State::no_event) {}
         void tick();
-        virtual void on_press(Button button);
+        Button get_button();
 
     protected:
         Button get_current_button();
         Button last_button;
-        bool event_fired;
         Stopwatch button_hold_time;
+        State state;
 };
 
 #endif
