@@ -72,12 +72,20 @@ void setup() {
 
     lcd.clear();
 
-    menu.add_item("Itsy");
-    menu.add_item("Bitsy");
-    menu.add_item("Spider");
-    menu.add_item("Climbed up");
-    menu.add_item("the water");
-    menu.add_item("spout");
+    menu.add_item("Time", []() {
+            if (!ntp_clock.ready()) {
+                return std::string("??:??");
+            }
+            const auto time = ntp_clock.get_time();
+            char text[6];
+            snprintf(text, 6, "%02i:%02i", time.get_hours(), time.get_minutes());
+            return std::string(text);
+        });
+    menu.add_item("Current", []() { return hot_water_program.get_reading(); });
+    menu.add_item("Desired", []() { return hot_water_program.get_desired(); });
+    menu.add_item_on_off("Heating", []() { return hot_water_program.get_state() == HotWaterController::State::on; });
+
+    menu.add_item("IP", []() { return std::string(WiFi.localIP().toString().c_str()); });
 }
 
 void loop() {
@@ -128,7 +136,6 @@ void loop() {
         }
     }
 #endif
-
     buttons.tick();
     menu.tick(lcd, buttons);
 }
