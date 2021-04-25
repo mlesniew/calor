@@ -6,7 +6,7 @@ void Buttons::tick() {
         button_hold_time.reset();
         last_button = button;
         state = State::no_event;
-    } else if (button != Button::none && state == State::no_event && button_hold_time.elapsed_millis() >= 4) {
+    } else if (button != Button::none && state == State::no_event && button_hold_time.elapsed_millis() >= 1) {
         state = State::event_pending;
     }
 }

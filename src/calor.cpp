@@ -41,7 +41,28 @@ HotWaterController hot_water_program(
 
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 Buttons buttons;
-Menu menu;
+
+
+Menu water_menu = {
+    MenuItem::value("Current", []() { return hot_water_program.get_reading(); }),
+    MenuItem::value("Desired", []() { return hot_water_program.get_desired(); }),
+    MenuItem::on_off("Heating", []() { return hot_water_program.get_state() == HotWaterController::State::on; }),
+    MenuItem::exit()
+};
+
+Menu menu = {
+    MenuItem::submenu("Hot water", water_menu),
+    MenuItem::value("Time", []() {
+            if (!ntp_clock.ready()) {
+                return std::string("??:??");
+            }
+            const auto time = ntp_clock.get_time();
+            char text[6];
+            snprintf(text, 6, "%02i:%02i", time.get_hours(), time.get_minutes());
+            return std::string(text);
+        }),
+    MenuItem::value("IP", []() { return std::string(WiFi.localIP().toString().c_str()); })
+};
 
 void setup() {
     Serial.begin(9600);
@@ -71,22 +92,8 @@ void setup() {
     hot_water_program.add(Time{20, 30}, 0);
 
     lcd.clear();
-
-    menu.add_item("Time", []() {
-            if (!ntp_clock.ready()) {
-                return std::string("??:??");
-            }
-            const auto time = ntp_clock.get_time();
-            char text[6];
-            snprintf(text, 6, "%02i:%02i", time.get_hours(), time.get_minutes());
-            return std::string(text);
-        });
-    menu.add_item("Current", []() { return hot_water_program.get_reading(); });
-    menu.add_item("Desired", []() { return hot_water_program.get_desired(); });
-    menu.add_item_on_off("Heating", []() { return hot_water_program.get_state() == HotWaterController::State::on; });
-
-    menu.add_item("IP", []() { return std::string(WiFi.localIP().toString().c_str()); });
 }
+
 
 void loop() {
     wifi_control.tick();
@@ -98,44 +105,6 @@ void loop() {
     temperature_sensor_controller.tick();
     hot_water_program.tick();
 
-#if 0
-    static Stopwatch stopwatch;
-    if (stopwatch.elapsed() > 1) {
-        stopwatch.reset();
-
-        lcd.setCursor(0, 0);
-        lcd.print("Water  ");
-
-        lcd.setCursor(0, 1);
-        lcd.printf("Temperature %6.1f\337C", hot_water_program.get_reading());
-
-        lcd.setCursor(0, 2);
-        lcd.printf("Desired     %6.1f\337C", hot_water_program.get_desired());
-
-        lcd.setCursor(15, 0);
-        if (!ntp_clock.ready()) {
-            lcd.print("??:??");
-        } else {
-            const auto time = ntp_clock.get_time();
-            lcd.printf("%02i:%02i", time.get_hours(), time.get_minutes());
-        }
-
-        lcd.setCursor(0, 3);
-        switch(hot_water_program.get_state()) {
-            case HotWaterController::State::on:
-                lcd.print(F("Heating on "));
-                break;
-
-            case HotWaterController::State::off:
-                lcd.print(F("Heating off"));
-                break;
-
-            case HotWaterController::State::invalid:
-                lcd.print(F("Error      "));
-                break;
-        }
-    }
-#endif
     buttons.tick();
     menu.tick(lcd, buttons);
 }
