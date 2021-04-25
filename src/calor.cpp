@@ -49,8 +49,20 @@ Menu water_menu = {
     MenuItem::exit()
 };
 
+Menu network_info_menu = {
+    MenuItem::value("SSID", []() { return WiFi.SSID(); }),
+    MenuItem::value("RSSI", []() { return WiFi.RSSI(); }, "dBm"),
+    MenuItem::value("IP", []() { return WiFi.localIP().toString(); }),
+    MenuItem::value("Mask", []() { return WiFi.subnetMask().toString(); }),
+    MenuItem::value("Gateway", []() { return WiFi.gatewayIP().toString(); }),
+    MenuItem::value("DNS 1", []() { return WiFi.dnsIP(0).toString(); }),
+    MenuItem::value("DNS 2", []() { return WiFi.dnsIP(1).toString(); }),
+    MenuItem::exit()
+};
+
 Menu menu = {
     MenuItem::submenu("Hot water", water_menu),
+    MenuItem::submenu("Network", network_info_menu),
     MenuItem::value("Time", []() {
             if (!ntp_clock.ready()) {
                 return std::string("??:??");

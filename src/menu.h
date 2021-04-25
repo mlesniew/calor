@@ -76,11 +76,14 @@ struct MenuItem {
         return value(title, wrapped_getter);
     }
 
-    static MenuItem value(const std::string & title, std::function<double()> value_getter) {
-        auto wrapped_getter = [value_getter]() {
+    static MenuItem value(
+            const std::string & title,
+            std::function<double()> value_getter,
+            const std::string & unit = "") {
+        auto wrapped_getter = [value_getter, unit]() {
             const double value = value_getter();
             char text[LCD_COLS];
-            snprintf(text, LCD_COLS, "%.1f", value);
+            snprintf(text, LCD_COLS, "%.1f%s", value, unit.c_str());
             return std::string(text);
         };
         return value(title, wrapped_getter);
