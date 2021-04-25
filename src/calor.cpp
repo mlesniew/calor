@@ -72,7 +72,6 @@ Menu menu = {
             snprintf(text, 6, "%02i:%02i", time.get_hours(), time.get_minutes());
             return std::string(text);
         }),
-    MenuItem::value("IP", []() { return WiFi.localIP().toString(); })
 };
 
 Ticker ticker;
@@ -82,6 +81,7 @@ void setup() {
     Serial.println(F("Calor " __DATE__ " " __TIME__));
 
     lcd.init();
+    lcd.clear();
     lcd.backlight();
 
     lcd.setCursor(0, 0);
@@ -91,25 +91,42 @@ void setup() {
     lcd.setCursor(0, 2);
     lcd.print(F("    " __TIME__));
 
+    auto setup_info = [](const char * text) {
+        lcd.setCursor(0, 3);
+        lcd.print(text);
+        auto reminder = 20 - strlen(text);
+        while (reminder--)
+            lcd.print(" ");
+        delay(100);
+    };
+
+    setup_info("shift register");
     shift_register.init();
+    setup_info("temperature sensor");
     temperature_sensor_controller.init();
+    setup_info("file system");
     LittleFS.begin();
 
+    setup_info("wifi");
     wifi_control.init();
+
+    setup_info("ntp clock");
     ntp_clock.init();
 
+    setup_info("hot water program");
     hot_water_program.init();
     hot_water_program.add(Time{7, 0}, 40);
     hot_water_program.add(Time{8, 30}, 30);
     hot_water_program.add(Time{17, 30}, 45);
     hot_water_program.add(Time{20, 30}, 0);
 
-    lcd.clear();
-
+    setup_info("menu system");
     ticker.attach(0.05, [] {
         buttons.tick();
         menu.tick(buttons);
     });
+
+    lcd.noAutoscroll();
 }
 
 
