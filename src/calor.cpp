@@ -42,7 +42,6 @@ HotWaterController hot_water_program(
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 Buttons buttons;
 
-
 Menu water_menu = {
     MenuItem::value("Current", []() { return hot_water_program.get_reading(); }),
     MenuItem::value("Desired", []() { return hot_water_program.get_desired(); }),
@@ -61,7 +60,7 @@ Menu menu = {
             snprintf(text, 6, "%02i:%02i", time.get_hours(), time.get_minutes());
             return std::string(text);
         }),
-    MenuItem::value("IP", []() { return std::string(WiFi.localIP().toString().c_str()); })
+    MenuItem::value("IP", []() { return WiFi.localIP().toString(); })
 };
 
 Ticker ticker;
