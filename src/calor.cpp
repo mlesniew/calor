@@ -64,6 +64,8 @@ Menu menu = {
     MenuItem::value("IP", []() { return std::string(WiFi.localIP().toString().c_str()); })
 };
 
+Ticker ticker;
+
 void setup() {
     Serial.begin(9600);
     Serial.println(F("Calor " __DATE__ " " __TIME__));
@@ -92,6 +94,11 @@ void setup() {
     hot_water_program.add(Time{20, 30}, 0);
 
     lcd.clear();
+
+    ticker.attach(0.05, [] {
+        buttons.tick();
+        menu.tick(buttons);
+    });
 }
 
 
@@ -105,6 +112,5 @@ void loop() {
     temperature_sensor_controller.tick();
     hot_water_program.tick();
 
-    buttons.tick();
-    menu.tick(lcd, buttons);
+    menu.refresh(lcd);
 }

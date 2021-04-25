@@ -10,7 +10,7 @@ constexpr size_t LCD_ROWS = 4;
 class Screen {
 public:
     virtual void reset() {}
-    virtual bool tick(LiquidCrystal_I2C & lcd, Buttons & buttons);
+    virtual bool tick(Buttons & buttons);
     virtual void refresh(LiquidCrystal_I2C & lcd);
 };
 
@@ -105,17 +105,22 @@ public:
     }
 
     void refresh(LiquidCrystal_I2C & lcd) {
-        if (selection_idx < screen_idx) {
-            screen_idx = selection_idx;
-        } else if (selection_idx >= screen_idx + LCD_ROWS) {
-            screen_idx = selection_idx - LCD_ROWS + 1;
-        }
+        if (screen) {
+            screen->refresh(lcd);
+        } else if (refresh_required) {
+            if (selection_idx < screen_idx) {
+                screen_idx = selection_idx;
+            } else if (selection_idx >= screen_idx + LCD_ROWS) {
+                screen_idx = selection_idx - LCD_ROWS + 1;
+            }
 
-        for (unsigned int row = 0; row < LCD_ROWS; ++row) {
-            refresh_row(lcd, row);
-        }
+            for (unsigned int row = 0; row < LCD_ROWS; ++row) {
+                refresh_row(lcd, row);
+            }
 
-        stopwatch.reset();
+            stopwatch.reset();
+            refresh_required = false;
+        }
     }
 
     void refresh_row(LiquidCrystal_I2C & lcd, unsigned int row) {
@@ -141,9 +146,9 @@ public:
         lcd.print(text_right.c_str());
     }
 
-    bool tick(LiquidCrystal_I2C & lcd, Buttons & buttons) override {
+    bool tick(Buttons & buttons) override {
         if (screen) {
-            if (!screen->tick(lcd, buttons)) {
+            if (!screen->tick(buttons)) {
                 // menu option exited
                 screen = nullptr;
                 refresh_required = true;
@@ -206,9 +211,6 @@ public:
             case MenuAction::exit:
                 return false;
             default:
-                if (refresh_required) {
-                    refresh(lcd);
-                }
                 return true;
         }
     }
