@@ -5,20 +5,7 @@
 
 #include <ArduinoJson.h>
 
-bool WiFiReadings::add(const char * name, float value) {
-    Serial.printf("WiFi temperature reading %s = %.2f\n", name, value);
-
-    if (count >= TEMPERATURE_MAX_ENTRIES)
-        return false;
-
-    strncpy(entries[count].name, name, TEMPERATURE_NAME_MAX_SIZE);
-    entries[count].value = value;
-    ++count;
-
-    return true;
-}
-
-bool WiFiReadings::load(Stream & stream) {
+bool WiFiReadings::update(Stream & stream) {
     StaticJsonDocument<256> doc;
 
     DeserializationError error = deserializeJson(doc, stream);
@@ -28,19 +15,25 @@ bool WiFiReadings::load(Stream & stream) {
         return false;
     }
 
-    presence = doc["presence"].as<bool>();
+    readings.presence = doc["presence"].as<bool>();
+    Serial.printf("  presence = %i\n", readings.presence);
 
-    count = 0;
     for (JsonPair kv : doc["temperature"].as<JsonObject>()) {
-        add(kv.key().c_str(), kv.value().as<float>());
+        const char * key = kv.key().c_str();
+        const double value = kv.value().as<double>();
+        readings.temperature[key] = value;
+        Serial.printf("  %s = %.2f\n", key, value);
     }
 
+    last_update.reset();
     return true;
 }
 
-bool WiFiReadings::load(const char * url) {
+bool WiFiReadings::update() {
     if (WiFi.status() != WL_CONNECTED)
         return false;
+
+    Serial.println(F("Updating WiFi readings..."));
 
     WiFiClient client;
     HTTPClient http;
@@ -51,7 +44,7 @@ bool WiFiReadings::load(const char * url) {
     // increase timeout
     client.setTimeout(10000);
 
-    if (!http.begin(client, url))
+    if (!http.begin(client, url.c_str()))
         return false;
 
     const int code = http.GET();
@@ -60,19 +53,9 @@ bool WiFiReadings::load(const char * url) {
 
     bool ret = false;
     if (code >= 200 && code < 300) {
-        ret = load(client);
+        ret = update(client);
     }
 
     http.end();
     return ret;
-}
-
-bool WiFiReadings::get(const char * name, float & value) const {
-    for (unsigned int i = 0; i < count; ++i) {
-        if (strncmp(name, entries[i].name, TEMPERATURE_NAME_MAX_SIZE) == 0) {
-            value = entries[i].value;
-            return true;
-        }
-    }
-    return false;
 }

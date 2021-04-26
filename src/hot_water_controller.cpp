@@ -1,13 +1,19 @@
+#include "clock.h"
 #include "hot_water_controller.h"
+#include "presence.h"
+
 HotWaterController::HotWaterController(
     const Clock & clock,
     const TemperatureSensorControllerInterface & sensors,
+    const PresenceController & presence_controller,
     const std::function<void(bool)> & set_output,
     double histeresis):
-    Periodic(10), set_output(set_output), clock(clock), sensors(sensors), state(State::invalid), histeresis(histeresis) {}
+    Periodic(10), set_output(set_output), clock(clock),
+    sensors(sensors), presence_controller(presence_controller),
+    state(false), histeresis(histeresis), reason("init") {}
 
 void HotWaterController::init() {
-    set_output(state == State::on);
+    set_output(state);
 }
 
 double HotWaterController::get_desired() const {
@@ -22,47 +28,45 @@ double HotWaterController::get_reading() const {
 
 void HotWaterController::periodic_proc() {
     const double reading = get_reading();
-    uint8_t h = 0;
-    uint8_t m = 0;
     double desired = 0;
 
-    State new_state = state;
+    bool new_state = state;
 
     if ((reading <= 0) || (reading >= 80)) {
         // invalid reading, stop heating for safety
-        new_state = State::invalid;
+        new_state = false;
+        reason = "reading error";
     } else if (reading <= 5) {
         // start heating to avoid freezing
-        new_state = State::on;
+        new_state = true;
+        reason = "anti-freeze";
     } else if (!clock.ready()) {
         // we don't know the time
-        new_state = State::invalid;
+        new_state = false;
+        reason = "clock error";
+    } else if (presence_controller.inactivity_time_hours() >= 1) {
+        // nobody home
+        new_state = false;
+        reason = "nobody home";
     } else {
         const auto time = clock.get_time();
-        h = time.get_hours();
-        m = time.get_minutes();
         desired = get(time);
 
-        switch (state) {
-            case State::on:
-                if (reading >= desired + histeresis)
-                    new_state = State::off;
-                break;
-            case State::invalid:
-                new_state = State::off;
-            case State::off:
-                if (reading <= desired - histeresis)
-                    new_state = State::on;
-                break;
+        if (state) {
+            if (reading >= desired + histeresis)
+                new_state = true;
+        } else {
+            if (reading <= desired - histeresis)
+                new_state = false;
         }
+        reason = "program";
     }
 
-    Serial.printf("%02i:%02i water temperature %.2f, desired %.2f, ", h, m, reading, desired);
+    Serial.printf("water temperature %.2f, desired %.2f, heating = %s, reason = %s\n",
+            reading, desired, new_state ? "on" : "off", reason.c_str());
+
     if (new_state != state) {
-        Serial.println(new_state == State::on ? F("starting heating") : F("stopping heating"));
         state = new_state;
-        set_output(state == State::on);
-    } else {
-        Serial.println(new_state == State::on ? F("heating stays on") : F("heating stays off"));
+        set_output(state);
     }
 }

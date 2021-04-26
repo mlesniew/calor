@@ -1,30 +1,44 @@
 #ifndef WIFI_READINGS_H
 #define WIFI_READINGS_H
 
-#define TEMPERATURE_NAME_MAX_SIZE 16
-#define TEMPERATURE_MAX_ENTRIES 10
+#include <map>
+#include <string>
+
+#include <utils/stopwatch.h>
+#include <utils/periodic.h>
 
 class Stream;
 
-struct TemperatureEntry {
-    char name[TEMPERATURE_NAME_MAX_SIZE];
-    float value;
-};
-
-class WiFiReadings {
-    public:
-        WiFiReadings(): presence(false), count(0) {}
-
-        bool load(Stream & stream);
-        bool load(const char * url);
-        bool get(const char * name, float & value) const;
-
-    protected:
-        bool add(const char * name, float value);
+class WiFiReadings : public Periodic {
+public:
+    struct Readings {
+        Readings(): presence(false) {}
 
         bool presence;
-        unsigned int count;
-        TemperatureEntry entries[TEMPERATURE_MAX_ENTRIES];
+        std::map<std::string, double> temperature;
+    };
+
+    WiFiReadings(const std::string & url, float max_age_seconds = 5 * 60)
+        : Periodic(15), url(url), max_age_seconds(max_age_seconds) {
+    }
+
+    void periodic_proc() override {
+        update();
+    }
+
+    bool update();
+
+    const Readings & get_readings() const { return readings; }
+    bool readings_valid() const { return last_update.elapsed() <= max_age_seconds; }
+
+    std::string url;
+    float max_age_seconds;
+
+protected:
+    bool update(Stream & stream);
+
+    Stopwatch last_update;
+    Readings readings;
 };
 
 #endif

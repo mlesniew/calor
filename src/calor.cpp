@@ -8,15 +8,18 @@
 #include <utils/wifi_control.h>
 
 #include "buttons.h"
-#include "menu.h"
 #include "clock.h"
-#include "wifi_readings.h"
-#include "temperature_sensor_controller.h"
 #include "hot_water_controller.h"
+#include "menu.h"
+#include "presence.h"
+#include "temperature_sensor_controller.h"
+#include "wifi_readings.h"
 
 BlinkingLed wifi_led(D4, 0, 91, true);
 WiFiControl wifi_control(wifi_led);
-WiFiReadings wifi_readings;
+WiFiReadings wifi_readings("http://192.168.1.200/measurements.json");
+PresenceController presence_controller(wifi_readings);
+
 ShiftRegister<1> shift_register(
     D6,  // data pin
     D5,  // clock pin
@@ -27,13 +30,14 @@ ShiftRegister<1> shift_register(
 );
 
 OneWire one_wire(D7);
-TemperatureSensorController<4, 12> temperature_sensor_controller(one_wire);
+TemperatureSensorController<4, 12> temperature_sensor_controller(one_wire, 13);
 
 Clock ntp_clock;
 
 HotWaterController hot_water_program(
     ntp_clock,
     temperature_sensor_controller,
+    presence_controller,
     [](bool value) {
         shift_register.write(3, value);
     },
@@ -45,7 +49,8 @@ Buttons buttons;
 Menu water_menu = {
     MenuItem::value("Current", []() { return hot_water_program.get_reading(); }),
     MenuItem::value("Desired", []() { return hot_water_program.get_desired(); }),
-    MenuItem::on_off("Heating", []() { return hot_water_program.get_state() == HotWaterController::State::on; }),
+    MenuItem::on_off("Heating", []() { return hot_water_program.get_state(); }),
+    MenuItem::value("Reason", []() { return hot_water_program.get_reason(); }),
     MenuItem::exit()
 };
 
@@ -125,20 +130,15 @@ void setup() {
         buttons.tick();
         menu.tick(buttons);
     });
-
-    lcd.noAutoscroll();
+    setup_info("ready");
 }
-
 
 void loop() {
     wifi_control.tick();
     ntp_clock.tick();
-
-    // Serial.println(WiFi.localIP());
-    // wifi_readings.load("http://192.168.1.200/measurements.json");
-
+    wifi_readings.tick();
+    presence_controller.tick();
     temperature_sensor_controller.tick();
     hot_water_program.tick();
-
     menu.refresh(lcd);
 }
