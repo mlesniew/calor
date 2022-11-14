@@ -5,6 +5,7 @@
 #include <utils/wifi_control.h>
 
 #include "celsius.h"
+#include "heating.h"
 
 constexpr auto celsius_address = "192.168.1.200";
 
@@ -20,6 +21,9 @@ DummyOutput other_relay;
 WiFiControl wifi_control(wifi_led);
 
 Stopwatch stopwatch;
+
+Heating heating = { "Salon", "Piętro", "Strych" };
+
 
 void setup() {
     Serial.begin(9600);
@@ -38,8 +42,10 @@ void loop() {
         const auto readings = get_celsius_readings(celsius_address);
         for (const auto & kv : readings) {
             printf("Temperature in %s = %f\n", kv.first.c_str(), kv.second);
+            heating.set_reading(kv.first, kv.second);
         }
 
         stopwatch.reset();
+        heating.tick();
     }
 }
