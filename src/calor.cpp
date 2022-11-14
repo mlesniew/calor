@@ -37,6 +37,7 @@ void setup() {
 
 void loop() {
     wifi_control.tick();
+    heating.tick();
 
     if (stopwatch.elapsed() >= 10) {
         const auto readings = get_celsius_readings(celsius_address);
@@ -46,6 +47,5 @@ void loop() {
         }
 
         stopwatch.reset();
-        heating.tick();
     }
 }

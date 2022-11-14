@@ -58,13 +58,14 @@ bool Zone::get_boiler_state() const {
     return state == ZoneState::on;
 }
 
-Heating::Heating(const std::initializer_list<std::string> & zone_names) {
+Heating::Heating(const std::initializer_list<std::string> & zone_names)
+    : Periodic(15) {
     for (const auto & zone_name : zone_names) {
         zones[zone_name] = Zone();
     }
 }
 
-void Heating::tick() {
+void Heating::periodic_proc() {
     burner = false;
 
     printf("Checking %i zones...\n", zones.size());

@@ -2,6 +2,7 @@
 #include <string>
 #include <map>
 
+#include <utils/periodic.h>
 #include <utils/stopwatch.h>
 
 enum class ZoneState { init, off, on, error };
@@ -32,15 +33,15 @@ protected:
     void process();
 
     ZoneState state;
-    double desired, reading, hysteresis;
+    double reading, desired, hysteresis;
     Stopwatch last_update;
 };
 
 
-struct Heating {
+struct Heating: public Periodic {
 public:
     Heating(const std::initializer_list<std::string> & zone_names);
-    void tick();
+    void periodic_proc();
     void set_reading(const std::string & name, double temperature);
 
 private:
