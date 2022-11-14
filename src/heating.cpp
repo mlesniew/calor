@@ -1,12 +1,14 @@
 #include <cmath>
+#include <limits>
+
 #include "heating.h"
 
 Zone::Zone()
-    : state(ZoneState::init), desired(21.0), reading(21.0), hysteresis(0.5) {
+    : state(ZoneState::init), reading(std::numeric_limits<double>::quiet_NaN()), desired(21.0), hysteresis(0.5) {
 }
 
 void Zone::set_reading(double new_reading) {
-    if (isnan(new_reading)) {
+    if (std::isnan(new_reading)) {
         // reading useless, ignore
         return;
     }
@@ -34,6 +36,7 @@ void Zone::set_hysteresis(double new_hysteresis) {
 void Zone::tick() {
     if (last_update.elapsed() >= 2 * 60 * 1000) {
         state = ZoneState::error;
+        reading = std::numeric_limits<double>::quiet_NaN();
         return;
     }
 
