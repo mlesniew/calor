@@ -4,10 +4,11 @@
 
 #include <utils/periodic.h>
 #include <utils/stopwatch.h>
+#include <utils/tickable.h>
 
 enum class ZoneState { init, off, on, error };
 
-class Zone {
+class Zone: public Tickable {
 public:
     Zone();
 
