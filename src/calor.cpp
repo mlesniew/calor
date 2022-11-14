@@ -4,10 +4,8 @@
 #include <utils/stopwatch.h>
 #include <utils/wifi_control.h>
 
-#include "celsius.h"
+#include "celsius_reader.h"
 #include "heating.h"
-
-constexpr auto celsius_address = "192.168.1.200";
 
 PinInput<D1, true> button;
 
@@ -20,10 +18,12 @@ DummyOutput other_relay;
 
 WiFiControl wifi_control(wifi_led);
 
-Stopwatch stopwatch;
-
 Heating heating = { "Salon", "Piętro", "Strych" };
-
+CelsiusReader celsius_reader(
+[](const std::string & name, double reading) {
+    heating.set_reading(name, reading);
+},
+{"192.168.1.200"});
 
 void setup() {
     Serial.begin(9600);
@@ -37,15 +37,6 @@ void setup() {
 
 void loop() {
     wifi_control.tick();
+    celsius_reader.tick();
     heating.tick();
-
-    if (stopwatch.elapsed() >= 10) {
-        const auto readings = get_celsius_readings(celsius_address);
-        for (const auto & kv : readings) {
-            printf("Temperature in %s = %f\n", kv.first.c_str(), kv.second);
-            heating.set_reading(kv.first, kv.second);
-        }
-
-        stopwatch.reset();
-    }
 }
