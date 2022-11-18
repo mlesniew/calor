@@ -23,38 +23,73 @@ WiFiControl wifi_control(wifi_led);
 Heating heating = { "Salon", "Piętro", "Strych" };
 CelsiusReader celsius_reader(
 [](const std::string & name, double reading) {
-    heating.set_reading(name, reading);
+    Zone * zone = heating.get(name);
+    if (zone) {
+        zone->update_reading(reading);
+    }
 },
 {"192.168.1.200"});
 
 ESP8266WebServer server(80);
 
 void setup_server() {
-    server.on(UriRegex("/zones/([^/]+)/desired/([0-9]+([.][0-9]+)?)"), HTTP_POST, []{
-            printf("Set zone %s desired temperature to %s\n", server.pathArg(0).c_str(), server.pathArg(1).c_str());
-            const auto zone = server.pathArg(0);
-            const auto value = server.pathArg(1).toDouble();
-            if ((value > 30.0) || (value < 10.0)) {
-                server.send(400, "text/plain", "Value out of bounds");
-            } else if (heating.set_desired(zone.c_str(), value)) {
-                server.send(200, "text/plain", "OK");
-            } else {
-                server.send(404, "text/plain", "Zone not found");
-            }
-        });
+    server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)"), HTTP_GET, [] {
 
-    server.on(UriRegex("/zones/([^/]+)/hysteresis/([0-9]+([.][0-9]+)?)"), HTTP_POST, []{
-            printf("Set zone %s hysteresis to %s\n", server.pathArg(0).c_str(), server.pathArg(1).c_str());
-            const auto zone = server.pathArg(0);
-            const auto value = server.pathArg(1).toDouble();
-            if ((value > 5.0) || (value < 0.0)) {
+        Zone * zone = heating.get(server.pathArg(0).c_str());
+        if (!zone) {
+            server.send(404, "text/plain", "No such zone");
+            return;
+        }
+
+        double value;
+        switch (server.pathArg(1).c_str()[0]) {
+        case 'd':
+            value = zone->desired;
+            break;
+        case 'h':
+            value = zone->hysteresis;
+            break;
+        case 'r':
+            value = zone->get_reading();
+            break;
+        }
+
+        server.send(200, "text/plain", String(value));
+    });
+
+    server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)/([0-9]+([.][0-9]+)?)"), HTTP_POST, [] {
+
+        Zone * zone = heating.get(server.pathArg(0).c_str());
+        if (!zone) {
+            server.send(404, "text/plain", "No such zone");
+            return;
+        }
+
+        const auto value = server.pathArg(2).toDouble();
+
+        switch (server.pathArg(1).c_str()[0]) {
+        case 'd':
+            if ((value < 0) || (value > 30.0)) {
                 server.send(400, "text/plain", "Value out of bounds");
-            } else if (heating.set_hysteresis(zone.c_str(), value)) {
-                server.send(200, "text/plain", "OK");
             } else {
-                server.send(404, "text/plain", "Zone not found");
+                zone->desired = value;
+                server.send(200, "text/plain", "OK");
             }
-        });
+            return;
+
+        case 'h':
+            if ((value < 0) || (value > 5)) {
+                server.send(400, "text/plain", "Value out of bounds");
+            } else {
+                zone->hysteresis = value;
+                server.send(200, "text/plain", "OK");
+            }
+            return;
+        }
+
+        server.send(400, "text/plain", "Bad request");
+
+    });
 
     server.begin();
 }

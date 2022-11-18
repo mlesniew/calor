@@ -4,37 +4,30 @@
 #include "heating.h"
 
 Zone::Zone()
-    : state(ZoneState::init), reading(std::numeric_limits<double>::quiet_NaN()), desired(21.0), hysteresis(0.5) {
+    : desired(21.0), hysteresis(0.5), state(ZoneState::init), reading(std::numeric_limits<double>::quiet_NaN()) {
 }
 
-void Zone::set_reading(double new_reading) {
+void Zone::update_reading(double new_reading) {
     if (std::isnan(new_reading)) {
         // reading useless, ignore
         return;
     }
 
     reading = new_reading;
-    last_update.reset();
+    last_reading_time.reset();
 
     switch (state) {
     case ZoneState::init:
     case ZoneState::error:
         state = ZoneState::off;
     default:
-        tick();
+        /* noop */
+        ;
     }
 }
 
-void Zone::set_desired(double new_desired) {
-    desired = new_desired;
-}
-
-void Zone::set_hysteresis(double new_hysteresis) {
-    hysteresis = new_hysteresis;
-}
-
 void Zone::tick() {
-    if (last_update.elapsed() >= 2 * 60 * 1000) {
+    if (last_reading_time.elapsed() >= 2 * 60 * 1000) {
         state = ZoneState::error;
         reading = std::numeric_limits<double>::quiet_NaN();
         return;
@@ -62,7 +55,7 @@ bool Zone::get_boiler_state() const {
 }
 
 Heating::Heating(const std::initializer_list<std::string> & zone_names)
-    : Periodic(15) {
+    : Periodic(5) {
     for (const auto & zone_name : zone_names) {
         zones[zone_name] = Zone();
     }
@@ -79,29 +72,16 @@ void Heating::periodic_proc() {
         burner = burner || zone.get_boiler_state();
         printf("  %s: %s  reading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
                name.c_str(), zone.get_boiler_state() ? "ON": "OFF",
-               zone.get_reading(), zone.get_desired(), zone.get_hysteresis()
+               zone.get_reading(), zone.desired, zone.hysteresis
               );
     };
     printf("Zone processing complete, burner status: %s\n", burner ? "ON" : "OFF");
 }
 
-bool Heating::zone_run(const std::string & name, std::function<void(Zone &)> fn) {
+Zone * Heating::get(const std::string & name) {
     const auto it = zones.find(name);
     if (it == zones.end()) {
-        return false;
+        return nullptr;
     }
-    fn(it->second);
-    return true;
-}
-
-bool Heating::set_reading(const std::string & name, double value) {
-    return zone_run(name, [value](Zone & zone) { zone.set_reading(value); });
-}
-
-bool Heating::set_desired(const std::string & name, double value) {
-    return zone_run(name, [value](Zone & zone) { zone.set_desired(value); });
-}
-
-bool Heating::set_hysteresis(const std::string & name, double value) {
-    return zone_run(name, [value](Zone & zone) { zone.set_hysteresis(value); });
+    return &it->second;
 }
