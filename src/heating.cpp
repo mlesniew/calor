@@ -51,7 +51,7 @@ bool Zone::get_boiler_state() const {
 }
 
 Heating::Heating(const std::initializer_list<std::string> & zone_names)
-    : Periodic(5) {
+    : Periodic(5, 4) {
     for (const auto & zone_name : zone_names) {
         zones[zone_name] = Zone();
     }

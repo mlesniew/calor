@@ -2,7 +2,7 @@
 #include "celsius_reader.h"
 
 CelsiusReader::CelsiusReader(std::function<void(std::string, double)> callback, std::vector<std::string> addresses)
-    : Periodic(60), callback(callback), addresses(addresses) {
+    : Periodic(60, 3), callback(callback), addresses(addresses) {
 }
 
 void CelsiusReader::periodic_proc() {

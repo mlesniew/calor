@@ -21,6 +21,7 @@ DummyOutput other_relay;
 WiFiControl wifi_control(wifi_led);
 
 Heating heating = { "Salon", "Piętro", "Strych" };
+
 CelsiusReader celsius_reader(
 [](const std::string & name, double reading) {
     Zone * zone = heating.get(name);
