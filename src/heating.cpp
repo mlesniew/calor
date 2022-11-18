@@ -85,10 +85,23 @@ void Heating::periodic_proc() {
     printf("Zone processing complete, burner status: %s\n", burner ? "ON" : "OFF");
 }
 
-void Heating::set_reading(const std::string & name, double value) {
+bool Heating::zone_run(const std::string & name, std::function<void(Zone &)> fn) {
     const auto it = zones.find(name);
     if (it == zones.end()) {
-        return;
+        return false;
     }
-    it->second.set_reading(value);
+    fn(it->second);
+    return true;
+}
+
+bool Heating::set_reading(const std::string & name, double value) {
+    return zone_run(name, [value](Zone & zone) { zone.set_reading(value); });
+}
+
+bool Heating::set_desired(const std::string & name, double value) {
+    return zone_run(name, [value](Zone & zone) { zone.set_desired(value); });
+}
+
+bool Heating::set_hysteresis(const std::string & name, double value) {
+    return zone_run(name, [value](Zone & zone) { zone.set_hysteresis(value); });
 }

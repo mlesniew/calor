@@ -43,9 +43,14 @@ struct Heating: public Periodic {
 public:
     Heating(const std::initializer_list<std::string> & zone_names);
     void periodic_proc();
-    void set_reading(const std::string & name, double temperature);
+
+    bool set_reading(const std::string & name, double value);
+    bool set_desired(const std::string & name, double value);
+    bool set_hysteresis(const std::string & name, double value);
 
 private:
     bool burner;
     std::map<std::string, Zone> zones;
+
+    bool zone_run(const std::string & name, std::function<void(Zone &)>);
 };

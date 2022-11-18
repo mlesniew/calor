@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <ESP8266WebServer.h>
+#include <uri/UriRegex.h>
 
 #include <utils/io.h>
 #include <utils/stopwatch.h>
@@ -25,6 +27,38 @@ CelsiusReader celsius_reader(
 },
 {"192.168.1.200"});
 
+ESP8266WebServer server(80);
+
+void setup_server() {
+    server.on(UriRegex("/zones/([^/]+)/desired/([0-9]+([.][0-9]+)?)"), HTTP_POST, []{
+            printf("Set zone %s desired temperature to %s\n", server.pathArg(0).c_str(), server.pathArg(1).c_str());
+            const auto zone = server.pathArg(0);
+            const auto value = server.pathArg(1).toDouble();
+            if ((value > 30.0) || (value < 10.0)) {
+                server.send(400, "text/plain", "Value out of bounds");
+            } else if (heating.set_desired(zone.c_str(), value)) {
+                server.send(200, "text/plain", "OK");
+            } else {
+                server.send(404, "text/plain", "Zone not found");
+            }
+        });
+
+    server.on(UriRegex("/zones/([^/]+)/hysteresis/([0-9]+([.][0-9]+)?)"), HTTP_POST, []{
+            printf("Set zone %s hysteresis to %s\n", server.pathArg(0).c_str(), server.pathArg(1).c_str());
+            const auto zone = server.pathArg(0);
+            const auto value = server.pathArg(1).toDouble();
+            if ((value > 5.0) || (value < 0.0)) {
+                server.send(400, "text/plain", "Value out of bounds");
+            } else if (heating.set_hysteresis(zone.c_str(), value)) {
+                server.send(200, "text/plain", "OK");
+            } else {
+                server.send(404, "text/plain", "Zone not found");
+            }
+        });
+
+    server.begin();
+}
+
 void setup() {
     Serial.begin(9600);
 
@@ -33,9 +67,12 @@ void setup() {
 
     const auto mode = button ? WiFiInitMode::setup : WiFiInitMode::saved;
     wifi_control.init(mode, "calor");
+
+    setup_server();
 }
 
 void loop() {
+    server.handleClient();
     wifi_control.tick();
     celsius_reader.tick();
     heating.tick();
