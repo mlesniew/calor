@@ -4,39 +4,33 @@
 #include "heating.h"
 
 Zone::Zone()
-    : desired(21.0), hysteresis(0.5), state(ZoneState::init), reading(std::numeric_limits<double>::quiet_NaN()) {
-}
-
-void Zone::update_reading(double new_reading) {
-    if (std::isnan(new_reading)) {
-        // reading useless, ignore
-        return;
-    }
-
-    reading = new_reading;
-    last_reading_time.reset();
-
-    switch (state) {
-    case ZoneState::init:
-    case ZoneState::error:
-        state = ZoneState::off;
-    default:
-        /* noop */
-        ;
-    }
+    : reading(std::numeric_limits<double>::quiet_NaN()), desired(21.0), hysteresis(0.5), state(ZoneState::init) {
 }
 
 void Zone::tick() {
-    if (last_reading_time.elapsed() >= 2 * 60 * 1000) {
-        state = ZoneState::error;
-        reading = std::numeric_limits<double>::quiet_NaN();
-        return;
+    const bool reading_timeout = reading.elapsed_millis() >= 2 * 60 * 1000;
+
+    /* handle errors */
+    switch (state) {
+    case ZoneState::off:
+    case ZoneState::on:
+        if (std::isnan(reading)) {
+            state = ZoneState::error;
+        }
+    case ZoneState::init:
+        if (reading_timeout) {
+            state = ZoneState::error;
+        }
+    case ZoneState::error:
+        if (!std::isnan(reading) && !reading_timeout) {
+            state = ZoneState::off;
+        }
+    default:
+        ;
     }
 
+    /* handle temperature control */
     switch (state) {
-    case ZoneState::init:
-    case ZoneState::error:
-        break;
     case ZoneState::off:
         if (reading <= desired - hysteresis) {
             state = ZoneState::on;
@@ -47,6 +41,8 @@ void Zone::tick() {
             state = ZoneState::off;
         }
         break;
+    default:
+        ;
     };
 }
 
@@ -72,7 +68,7 @@ void Heating::periodic_proc() {
         burner = burner || zone.get_boiler_state();
         printf("  %s: %s  reading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
                name.c_str(), zone.get_boiler_state() ? "ON": "OFF",
-               zone.get_reading(), zone.desired, zone.hysteresis
+               (double) zone.reading, zone.desired, zone.hysteresis
               );
     };
     printf("Zone processing complete, burner status: %s\n", burner ? "ON" : "OFF");

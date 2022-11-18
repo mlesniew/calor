@@ -8,27 +8,45 @@
 
 enum class ZoneState { init, off, on, error };
 
+template <typename T>
+class ValueWithStopwatch {
+public:
+    ValueWithStopwatch(const T & value)
+        : value(value) {
+    }
+
+    T & operator=(const T & value) {
+        stopwatch.reset();
+        return this->value = value;
+    }
+
+    operator T() const {
+        return value;
+    }
+
+    unsigned long elapsed_millis() const {
+        return stopwatch.elapsed();
+    }
+
+private:
+    T value;
+    Stopwatch stopwatch;
+};
+
 class Zone: public Tickable {
 public:
     Zone();
 
     void tick();
 
-    void update_reading(double reading);
-    double get_reading() const {
-        return reading;
-    }
-
     bool get_boiler_state() const;
 
+    ValueWithStopwatch<double> reading;
     double desired, hysteresis;
 
 protected:
     ZoneState state;
-    double reading;
-    Stopwatch last_reading_time;
 };
-
 
 struct Heating: public Periodic {
 public:

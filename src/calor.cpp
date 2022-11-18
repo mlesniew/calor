@@ -25,7 +25,7 @@ CelsiusReader celsius_reader(
 [](const std::string & name, double reading) {
     Zone * zone = heating.get(name);
     if (zone) {
-        zone->update_reading(reading);
+        zone->reading = reading;
     }
 },
 {"192.168.1.200"});
@@ -50,7 +50,7 @@ void setup_server() {
             value = zone->hysteresis;
             break;
         case 'r':
-            value = zone->get_reading();
+            value = zone->reading;
             break;
         }
 
