@@ -101,7 +101,7 @@ void setup() {
     wifi_led.init();
     status_led.init();
 
-    const auto mode = button ? WiFiInitMode::setup : WiFiInitMode::saved;
+    const auto mode = WiFiInitMode::saved; // button ? WiFiInitMode::setup : WiFiInitMode::saved;
     wifi_control.init(mode, "calor");
 
     setup_server();
