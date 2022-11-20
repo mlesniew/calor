@@ -25,7 +25,7 @@ public:
     }
 
     unsigned long elapsed_millis() const {
-        return stopwatch.elapsed();
+        return stopwatch.elapsed_millis();
     }
 
 private:
