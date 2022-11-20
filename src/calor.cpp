@@ -10,6 +10,7 @@
 
 #include "celsius_reader.h"
 #include "heating.h"
+#include "utils.h"
 
 PinInput<D1, true> button;
 
@@ -38,7 +39,7 @@ ESP8266WebServer server(80);
 void setup_server() {
     server.on(UriRegex("/zones/([^/]+)"), HTTP_GET, [] {
 
-        Zone * zone = heating.get(server.pathArg(0).c_str());
+        Zone * zone = heating.get(uri_unquote(server.pathArg(0).c_str()));
         if (!zone) {
             server.send(404, "text/plain", "No such zone");
             return;
@@ -51,7 +52,7 @@ void setup_server() {
 
     server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)"), HTTP_GET, [] {
 
-        Zone * zone = heating.get(server.pathArg(0).c_str());
+        Zone * zone = heating.get(uri_unquote(server.pathArg(0).c_str()));
         if (!zone) {
             server.send(404, "text/plain", "No such zone");
             return;
@@ -75,7 +76,7 @@ void setup_server() {
 
     server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)/([0-9]+([.][0-9]+)?)"), HTTP_POST, [] {
 
-        Zone * zone = heating.get(server.pathArg(0).c_str());
+        Zone * zone = heating.get(uri_unquote(server.pathArg(0).c_str()));
         if (!zone) {
             server.send(404, "text/plain", "No such zone");
             return;
