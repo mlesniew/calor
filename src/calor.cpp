@@ -2,6 +2,8 @@
 #include <ESP8266WebServer.h>
 #include <uri/UriRegex.h>
 
+#include <ArduinoJson.h>
+
 #include <utils/io.h>
 #include <utils/stopwatch.h>
 #include <utils/wifi_control.h>
@@ -34,6 +36,19 @@ CelsiusReader celsius_reader(
 ESP8266WebServer server(80);
 
 void setup_server() {
+    server.on(UriRegex("/zones/([^/]+)"), HTTP_GET, [] {
+
+        Zone * zone = heating.get(server.pathArg(0).c_str());
+        if (!zone) {
+            server.send(404, "text/plain", "No such zone");
+            return;
+        }
+
+        String output;
+        serializeJson(zone->get_json(), output);
+        server.send(200, "application/json", output);
+    });
+
     server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)"), HTTP_GET, [] {
 
         Zone * zone = heating.get(server.pathArg(0).c_str());

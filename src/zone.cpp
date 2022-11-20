@@ -1,6 +1,17 @@
 #include <cmath>
 
+#include <ArduinoJson.h>
+
 #include "zone.h"
+
+const char * to_c_str(const ZoneState & s) {
+    switch (s) {
+        case ZoneState::init: return "init";
+        case ZoneState::on: return "heat";
+        case ZoneState::off: return "wait";
+        default: return "error";
+    }
+}
 
 Zone::Zone()
     : reading(std::numeric_limits<double>::quiet_NaN()), desired(21.0), hysteresis(0.5), state(ZoneState::init) {
@@ -49,3 +60,13 @@ bool Zone::get_boiler_state() const {
     return state == ZoneState::on;
 }
 
+DynamicJsonDocument Zone::get_json() const {
+    DynamicJsonDocument json(64);
+
+    json["desired"] = desired;
+    json["hysteresis"] = hysteresis;
+    json["reading"] = double(reading);
+    json["state"] = to_c_str(state);
+
+    return json;
+}

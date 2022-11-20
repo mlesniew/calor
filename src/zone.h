@@ -1,6 +1,8 @@
 #ifndef ZONE_H
 #define ZONE_H
 
+#include <ArduinoJson.h>
+
 #include <utils/tickable.h>
 #include <utils/stopwatch.h>
 
@@ -38,6 +40,8 @@ public:
     void tick();
 
     bool get_boiler_state() const;
+
+    DynamicJsonDocument get_json() const;
 
     ValueWithStopwatch<double> reading;
     double desired, hysteresis;
