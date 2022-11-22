@@ -36,12 +36,15 @@ private:
 class Zone: public Tickable {
 public:
     Zone();
+    Zone(const Zone & zone);
+    const Zone & operator=(const Zone & zone);
 
     void tick();
 
     bool get_boiler_state() const;
 
-    DynamicJsonDocument get_json() const;
+    DynamicJsonDocument to_json() const;
+    bool load(const JsonVariant & json);
 
     ValueWithStopwatch<double> reading;
     double desired, hysteresis;

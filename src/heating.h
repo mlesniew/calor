@@ -16,10 +16,10 @@ public:
     void periodic_proc();
 
     Zone * get(const std::string & name);
+    std::map<std::string, Zone> zones;
 
 private:
     bool burner;
-    std::map<std::string, Zone> zones;
 };
 
 #endif

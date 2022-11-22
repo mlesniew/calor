@@ -17,6 +17,17 @@ Zone::Zone()
     : reading(std::numeric_limits<double>::quiet_NaN()), desired(21.0), hysteresis(0.5), state(ZoneState::init) {
 }
 
+Zone::Zone(const Zone & other)
+    : Zone() {
+    *this = other;
+}
+
+const Zone & Zone::operator=(const Zone & other) {
+    desired = other.desired;
+    hysteresis = other.hysteresis;
+    return *this;
+}
+
 void Zone::tick() {
     const bool reading_timeout = reading.elapsed_millis() >= 2 * 60 * 1000;
 
@@ -60,7 +71,7 @@ bool Zone::get_boiler_state() const {
     return state == ZoneState::on;
 }
 
-DynamicJsonDocument Zone::get_json() const {
+DynamicJsonDocument Zone::to_json() const {
     DynamicJsonDocument json(64);
 
     json["desired"] = desired;
@@ -69,4 +80,22 @@ DynamicJsonDocument Zone::get_json() const {
     json["state"] = to_c_str(state);
 
     return json;
+}
+
+bool Zone::load(const JsonVariant & json) {
+    const auto obj = json.as<JsonObject>();
+
+    if (obj.isNull())
+        return false;
+
+    // TODO: validate
+    if (obj.containsKey("desired")) {
+        desired = obj["desired"];
+    }
+
+    if (obj.containsKey("hysteresis")) {
+        hysteresis = obj["hysteresis"];
+    }
+
+    return true;
 }
