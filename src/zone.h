@@ -6,7 +6,7 @@
 #include <utils/tickable.h>
 #include <utils/stopwatch.h>
 
-enum class ZoneState { init, off, on, error };
+enum class ZoneState { init, off, on, open_valve, close_valve, error };
 
 template <typename T>
 class ValueWithStopwatch {
@@ -41,12 +41,15 @@ public:
 
     void tick();
 
-    bool get_boiler_state() const;
+    bool valve_desired_state() const;
+    bool boiler_desired_state() const;
 
     DynamicJsonDocument to_json() const;
     bool load(const JsonVariant & json);
 
     ValueWithStopwatch<double> reading;
+    ValueWithStopwatch<bool> valve_open;
+
     double desired, hysteresis;
 
 protected:

@@ -14,8 +14,9 @@
 #include <utils/wifi_control.h>
 
 #include "celsius.h"
-#include "zone.h"
 #include "utils.h"
+#include "valvola.h"
+#include "zone.h"
 
 PinInput<D1, true> button;
 
@@ -30,6 +31,7 @@ WiFiControl wifi_control(wifi_led);
 
 std::map<std::string, Zone> zones;
 std::set<std::string> celsius_addresses = {"192.168.1.200"};
+std::set<std::string> valvola_addresses = {"192.168.1.230"};
 
 ESP8266WebServer server(80);
 
@@ -43,9 +45,9 @@ void setup_server() {
         // check for conflicts
         const bool zone_exists = (it != zones.end());
         const bool zone_should_exist = (
-                (server.method() == HTTP_GET) ||
-                (server.method() == HTTP_PUT) ||
-                (server.method() == HTTP_DELETE));
+            (server.method() == HTTP_GET) ||
+            (server.method() == HTTP_PUT) ||
+            (server.method() == HTTP_DELETE));
 
         if (zone_exists && !zone_should_exist) {
             server.send(409, "text/plain", "Zone exists");
@@ -75,21 +77,21 @@ void setup_server() {
 
         // perform action
         switch (server.method()) {
-            case HTTP_POST:
-                it = zones.insert({name, parsed_zone}).first;
-                break;
-            case HTTP_PUT:
-                it->second = parsed_zone;
-                break;
-            case HTTP_DELETE:
-                zones.erase(it);
-                server.send(200, "text/plain", "zone deleted");
-                return;
-            case HTTP_GET:
-                break;
-            default:
-                server.send(405, "text/plain", "invalid request");
-                return;
+        case HTTP_POST:
+            it = zones.insert({name, parsed_zone}).first;
+            break;
+        case HTTP_PUT:
+            it->second = parsed_zone;
+            break;
+        case HTTP_DELETE:
+            zones.erase(it);
+            server.send(200, "text/plain", "zone deleted");
+            return;
+        case HTTP_GET:
+            break;
+        default:
+            server.send(405, "text/plain", "invalid request");
+            return;
         }
 
         // return zone
@@ -194,23 +196,53 @@ PeriodicRun celsius_proc(60, 3, [] {
     }
 });
 
-PeriodicRun heating_proc(10, [] {
-    bool heating_on = false;
+PeriodicRun valvola_proc(60, 5, [] {
+    String output;
+    DynamicJsonDocument json(1024);
+    for (auto & kv : zones) {
+        const auto & name = kv.first;
+        auto & zone = kv.second;
+        json[name] = zone.valve_desired_state();
+    }
+    serializeJson(json, output);
+
+    for (const auto & address: valvola_addresses) {
+        std::map<std::string, bool> desired_valve_states;
+        for (auto & kv : zones) {
+            desired_valve_states[kv.first] = kv.second.valve_desired_state();
+        }
+
+        const auto valve_states = update_valvola(address, desired_valve_states);
+        for (const auto & kv : valve_states) {
+            const auto & name = kv.first;
+            const auto state = kv.second;
+            printf("Valve state %s = %s\n", name.c_str(), state ? "open" : "closed");
+            auto it = zones.find(name);
+            if (it != zones.end()) {
+                it->second.valve_open = state;
+            }
+        }
+    }
+
+});
+
+PeriodicRun heating_proc(10, 4, [] {
+    bool boiler_on = false;
     printf("Checking %i zones...\n", zones.size());
 
     for (auto & kv : zones) {
         const auto & name = kv.first;
         auto & zone = kv.second;
         zone.tick();
-        heating_on = heating_on || zone.get_boiler_state();
+        boiler_on = boiler_on || zone.boiler_desired_state();
         printf("  %s: %s  reading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
-               name.c_str(), zone.get_boiler_state() ? "ON": "OFF",
+               name.c_str(), zone.boiler_desired_state() ? "ON": "OFF",
                (double) zone.reading, zone.desired, zone.hysteresis
               );
     };
 
-    printf("Zone processing complete, heating: %s\n", heating_on ? "ON" : "OFF");
-    heating_relay.set(heating_on);
+    printf("Zone processing complete, heating: %s\n", boiler_on ? "ON" : "OFF");
+    heating_relay.set(boiler_on);
 });
 
 void loop() {
@@ -218,4 +250,5 @@ void loop() {
     wifi_control.tick();
     celsius_proc.tick();
     heating_proc.tick();
+    valvola_proc.tick();
 }
