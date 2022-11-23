@@ -1,3 +1,6 @@
+#include <map>
+#include <string>
+
 #include <Arduino.h>
 #include <ESP8266WebServer.h>
 #include <uri/UriRegex.h>
@@ -5,11 +8,12 @@
 #include <ArduinoJson.h>
 
 #include <utils/io.h>
+#include <utils/periodic_run.h>
 #include <utils/stopwatch.h>
 #include <utils/wifi_control.h>
 
 #include "celsius_reader.h"
-#include "heating.h"
+#include "zone.h"
 #include "utils.h"
 
 PinInput<D1, true> button;
@@ -23,13 +27,13 @@ DummyOutput other_relay;
 
 WiFiControl wifi_control(wifi_led);
 
-Heating heating = { "Salon", "Piętro", "Strych" };
+std::map<std::string, Zone> zones;
 
 CelsiusReader celsius_reader(
 [](const std::string & name, double reading) {
-    Zone * zone = heating.get(name);
-    if (zone) {
-        zone->reading = reading;
+    auto it = zones.find(name);
+    if (it != zones.end()) {
+        it->second.reading = reading;
     }
 },
 {"192.168.1.200"});
@@ -39,12 +43,12 @@ ESP8266WebServer server(80);
 void setup_server() {
 
     server.on(UriRegex("/zones/([^/]+)"), [] {
-        const std::string zone_name = uri_unquote(server.pathArg(0).c_str());
+        const std::string name = uri_unquote(server.pathArg(0).c_str());
 
-        auto it = heating.zones.find(zone_name);
+        auto it = zones.find(name);
 
         // check for conflicts
-        const bool zone_exists = (it != heating.zones.end());
+        const bool zone_exists = (it != zones.end());
         const bool zone_should_exist = (
                 (server.method() == HTTP_GET) ||
                 (server.method() == HTTP_PUT) ||
@@ -79,13 +83,13 @@ void setup_server() {
         // perform action
         switch (server.method()) {
             case HTTP_POST:
-                it = heating.zones.insert({zone_name, parsed_zone}).first;
+                it = zones.insert({name, parsed_zone}).first;
                 break;
             case HTTP_PUT:
                 it->second = parsed_zone;
                 break;
             case HTTP_DELETE:
-                heating.zones.erase(it);
+                zones.erase(it);
                 server.send(200, "text/plain", "zone deleted");
                 return;
             case HTTP_GET:
@@ -102,23 +106,26 @@ void setup_server() {
     });
 
     server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)"), HTTP_GET, [] {
+        const std::string name = uri_unquote(server.pathArg(0).c_str());
+        const auto it = zones.find(name);
 
-        Zone * zone = heating.get(uri_unquote(server.pathArg(0).c_str()));
-        if (!zone) {
+        if (it == zones.end()) {
             server.send(404, "text/plain", "No such zone");
             return;
         }
 
+        const Zone & zone = it->second;
+
         double value;
         switch (server.pathArg(1).c_str()[0]) {
         case 'd':
-            value = zone->desired;
+            value = zone.desired;
             break;
         case 'h':
-            value = zone->hysteresis;
+            value = zone.hysteresis;
             break;
         case 'r':
-            value = zone->reading;
+            value = zone.reading;
             break;
         }
 
@@ -126,12 +133,15 @@ void setup_server() {
     });
 
     server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)/([0-9]+([.][0-9]+)?)"), HTTP_POST, [] {
+        const std::string name = uri_unquote(server.pathArg(0).c_str());
 
-        Zone * zone = heating.get(uri_unquote(server.pathArg(0).c_str()));
-        if (!zone) {
+        auto it = zones.find(name);
+        if (it == zones.end()) {
             server.send(404, "text/plain", "No such zone");
             return;
         }
+
+        Zone & zone = it->second;
 
         const auto value = server.pathArg(2).toDouble();
 
@@ -140,7 +150,7 @@ void setup_server() {
             if ((value < 0) || (value > 30.0)) {
                 server.send(400, "text/plain", "Value out of bounds");
             } else {
-                zone->desired = value;
+                zone.desired = value;
                 server.send(200, "text/plain", "OK");
             }
             return;
@@ -149,14 +159,13 @@ void setup_server() {
             if ((value < 0) || (value > 5)) {
                 server.send(400, "text/plain", "Value out of bounds");
             } else {
-                zone->hysteresis = value;
+                zone.hysteresis = value;
                 server.send(200, "text/plain", "OK");
             }
             return;
         }
 
         server.send(400, "text/plain", "Bad request");
-
     });
 
     server.begin();
@@ -172,11 +181,33 @@ void setup() {
     wifi_control.init(mode, "calor");
 
     setup_server();
+
+    zones["Living room"];
+    zones["Bedroom"];
 }
+
+PeriodicRun heating_proc(10, [] {
+    bool heating_on = false;
+    printf("Checking %i zones...\n", zones.size());
+
+    for (auto & kv : zones) {
+        const auto & name = kv.first;
+        auto & zone = kv.second;
+        zone.tick();
+        heating_on = heating_on || zone.get_boiler_state();
+        printf("  %s: %s  reading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
+               name.c_str(), zone.get_boiler_state() ? "ON": "OFF",
+               (double) zone.reading, zone.desired, zone.hysteresis
+              );
+    };
+
+    printf("Zone processing complete, heating: %s\n", heating_on ? "ON" : "OFF");
+    heating_relay.set(heating_on);
+});
 
 void loop() {
     server.handleClient();
     wifi_control.tick();
     celsius_reader.tick();
-    heating.tick();
+    heating_proc.tick();
 }
