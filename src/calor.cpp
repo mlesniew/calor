@@ -1,4 +1,5 @@
 #include <map>
+#include <set>
 #include <string>
 
 #include <Arduino.h>
@@ -12,7 +13,7 @@
 #include <utils/stopwatch.h>
 #include <utils/wifi_control.h>
 
-#include "celsius_reader.h"
+#include "celsius.h"
 #include "zone.h"
 #include "utils.h"
 
@@ -28,15 +29,7 @@ DummyOutput other_relay;
 WiFiControl wifi_control(wifi_led);
 
 std::map<std::string, Zone> zones;
-
-CelsiusReader celsius_reader(
-[](const std::string & name, double reading) {
-    auto it = zones.find(name);
-    if (it != zones.end()) {
-        it->second.reading = reading;
-    }
-},
-{"192.168.1.200"});
+std::set<std::string> celsius_addresses = {"192.168.1.200"};
 
 ESP8266WebServer server(80);
 
@@ -186,6 +179,21 @@ void setup() {
     zones["Bedroom"];
 }
 
+PeriodicRun celsius_proc(60, 3, [] {
+    for (const auto & address: celsius_addresses) {
+        const auto readings = get_celsius_readings(address);
+        for (const auto & kv : readings) {
+            const auto & name = kv.first;
+            const double reading = kv.second;
+            printf("Temperature in %s = %.2f ºC\n", name.c_str(), reading);
+            auto it = zones.find(name);
+            if (it != zones.end()) {
+                it->second.reading = reading;
+            }
+        }
+    }
+});
+
 PeriodicRun heating_proc(10, [] {
     bool heating_on = false;
     printf("Checking %i zones...\n", zones.size());
@@ -208,6 +216,6 @@ PeriodicRun heating_proc(10, [] {
 void loop() {
     server.handleClient();
     wifi_control.tick();
-    celsius_reader.tick();
+    celsius_proc.tick();
     heating_proc.tick();
 }
