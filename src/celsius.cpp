@@ -6,7 +6,7 @@
 
 namespace {
 
-std::map<std::string, double> get_celsius_readings(Stream & stream) {
+std::map<std::string, double> parse_celsius_response(Stream & stream) {
     StaticJsonDocument<256> doc;
 
     DeserializationError error = deserializeJson(doc, stream);
@@ -20,10 +20,7 @@ std::map<std::string, double> get_celsius_readings(Stream & stream) {
     std::map<std::string, double> ret;
 
     for (JsonPair kv : doc.as<JsonObject>()) {
-        const std::string key{kv.key().c_str()};
-        const double value = kv.value().as<double>();
-        ret[key] = value;
-        Serial.printf("  %s = %.2f\n", key.c_str(), value);
+        ret[kv.key().c_str()] = kv.value().as<double>();
     }
 
     return ret;
@@ -57,17 +54,10 @@ std::map<std::string, double> get_celsius_readings(const std::string & ip) {
 
     const int code = http.GET();
     printf("got HTTP code %i\n", code);
-
-    if (!code) {
+    if (!code || (code < 200) || (code >= 300)) {
         return {};
     }
 
-    std::map<std::string, double> ret;
-
-    if (code >= 200 && code < 300) {
-        ret = get_celsius_readings(client);
-    }
-
-    http.end();
-    return ret;
+    return parse_celsius_response(client);
+    // NOTE: there's no need to call http.end() if we don't plan to reuse the object
 }
