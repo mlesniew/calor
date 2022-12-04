@@ -15,6 +15,7 @@
 
 #include "celsius.h"
 #include "utils.h"
+#include "valve.h"
 #include "valvola.h"
 #include "zone.h"
 
@@ -34,6 +35,8 @@ std::set<std::string> celsius_addresses = {"192.168.1.200"};
 std::set<std::string> valvola_addresses = {"192.168.1.230"};
 
 ESP8266WebServer server(80);
+
+Valve local_valve(valve_relay, "built-in valve");
 
 void setup_server() {
 
@@ -77,21 +80,21 @@ void setup_server() {
 
         // perform action
         switch (server.method()) {
-        case HTTP_POST:
-            it = zones.insert({name, parsed_zone}).first;
-            break;
-        case HTTP_PUT:
-            it->second = parsed_zone;
-            break;
-        case HTTP_DELETE:
-            zones.erase(it);
-            server.send(200, "text/plain", "zone deleted");
-            return;
-        case HTTP_GET:
-            break;
-        default:
-            server.send(405, "text/plain", "invalid request");
-            return;
+            case HTTP_POST:
+                it = zones.insert({name, parsed_zone}).first;
+                break;
+            case HTTP_PUT:
+                it->second = parsed_zone;
+                break;
+            case HTTP_DELETE:
+                zones.erase(it);
+                server.send(200, "text/plain", "zone deleted");
+                return;
+            case HTTP_GET:
+                break;
+            default:
+                server.send(405, "text/plain", "invalid request");
+                return;
         }
 
         // return zone
@@ -113,15 +116,15 @@ void setup_server() {
 
         double value;
         switch (server.pathArg(1).c_str()[0]) {
-        case 'd':
-            value = zone.desired;
-            break;
-        case 'h':
-            value = zone.hysteresis;
-            break;
-        case 'r':
-            value = zone.reading;
-            break;
+            case 'd':
+                value = zone.desired;
+                break;
+            case 'h':
+                value = zone.hysteresis;
+                break;
+            case 'r':
+                value = zone.reading;
+                break;
         }
 
         server.send(200, "text/plain", String(value));
@@ -141,23 +144,23 @@ void setup_server() {
         const auto value = server.pathArg(2).toDouble();
 
         switch (server.pathArg(1).c_str()[0]) {
-        case 'd':
-            if ((value < 0) || (value > 30.0)) {
-                server.send(400, "text/plain", "Value out of bounds");
-            } else {
-                zone.desired = value;
-                server.send(200, "text/plain", "OK");
-            }
-            return;
+            case 'd':
+                if ((value < 0) || (value > 30.0)) {
+                    server.send(400, "text/plain", "Value out of bounds");
+                } else {
+                    zone.desired = value;
+                    server.send(200, "text/plain", "OK");
+                }
+                return;
 
-        case 'h':
-            if ((value < 0) || (value > 5)) {
-                server.send(400, "text/plain", "Value out of bounds");
-            } else {
-                zone.hysteresis = value;
-                server.send(200, "text/plain", "OK");
-            }
-            return;
+            case 'h':
+                if ((value < 0) || (value > 5)) {
+                    server.send(400, "text/plain", "Value out of bounds");
+                } else {
+                    zone.hysteresis = value;
+                    server.send(200, "text/plain", "OK");
+                }
+                return;
         }
 
         server.send(400, "text/plain", "Bad request");
@@ -182,7 +185,7 @@ void setup() {
 }
 
 PeriodicRun celsius_proc(60, 3, [] {
-    for (const auto & address: celsius_addresses) {
+    for (const auto & address : celsius_addresses) {
         const auto readings = get_celsius_readings(address);
         for (const auto & kv : readings) {
             const auto & name = kv.first;
@@ -196,6 +199,22 @@ PeriodicRun celsius_proc(60, 3, [] {
     }
 });
 
+PeriodicRun local_valve_proc(60, 5, [] {
+    auto it = zones.find(local_valve.name);
+    if (it == zones.end()) {
+        local_valve.demand_open = false;
+        local_valve.tick();
+        return;
+    }
+
+    auto & zone = it->second;
+
+    local_valve.demand_open = zone.valve_desired_state();
+    local_valve.tick();
+
+    zone.valve_state = local_valve.get_state();
+});
+
 PeriodicRun valvola_proc(60, 5, [] {
     String output;
     DynamicJsonDocument json(1024);
@@ -206,7 +225,7 @@ PeriodicRun valvola_proc(60, 5, [] {
     }
     serializeJson(json, output);
 
-    for (const auto & address: valvola_addresses) {
+    for (const auto & address : valvola_addresses) {
         std::map<std::string, bool> desired_valve_states;
         for (auto & kv : zones) {
             desired_valve_states[kv.first] = kv.second.valve_desired_state();
@@ -216,10 +235,10 @@ PeriodicRun valvola_proc(60, 5, [] {
         for (const auto & kv : valve_states) {
             const auto & name = kv.first;
             const auto state = kv.second;
-            printf("Valve state %s = %s\n", name.c_str(), state ? "open" : "closed");
+            printf("Valve state %s = %s\n", name.c_str(), to_c_str(state));
             auto it = zones.find(name);
             if (it != zones.end()) {
-                it->second.valve_open = state;
+                it->second.valve_state = state;
             }
         }
     }
@@ -236,7 +255,7 @@ PeriodicRun heating_proc(10, 4, [] {
         zone.tick();
         boiler_on = boiler_on || zone.boiler_desired_state();
         printf("  %s: %s  reading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
-               name.c_str(), zone.boiler_desired_state() ? "ON": "OFF",
+               name.c_str(), zone.boiler_desired_state() ? "ON" : "OFF",
                (double) zone.reading, zone.desired, zone.hysteresis
               );
     };
@@ -251,4 +270,6 @@ void loop() {
     celsius_proc.tick();
     heating_proc.tick();
     valvola_proc.tick();
+    local_valve.tick();
+    local_valve_proc.tick();
 }

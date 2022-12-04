@@ -18,7 +18,7 @@ String serialize_map(const std::map<std::string, bool> mapping) {
     return ret;
 }
 
-std::map<std::string, bool> parse_valvola_response(Stream & stream) {
+std::map<std::string, ValveState> parse_valvola_response(Stream & stream) {
     StaticJsonDocument<256> doc;
 
     DeserializationError error = deserializeJson(doc, stream);
@@ -29,10 +29,10 @@ std::map<std::string, bool> parse_valvola_response(Stream & stream) {
         return {};
     }
 
-    std::map<std::string, bool> ret;
+    std::map<std::string, ValveState> ret;
 
     for (JsonPair kv : doc.as<JsonObject>()) {
-        ret[kv.key().c_str()] = kv.value().as<bool>();
+        ret[kv.key().c_str()] = parse_valve_state(kv.value().as<std::string>());
     }
 
     return ret;
@@ -40,7 +40,7 @@ std::map<std::string, bool> parse_valvola_response(Stream & stream) {
 
 }
 
-std::map<std::string, bool> update_valvola(
+std::map<std::string, ValveState> update_valvola(
     const std::string & address,
     const std::map<std::string, bool> desired) {
 

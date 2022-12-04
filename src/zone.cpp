@@ -4,25 +4,8 @@
 
 #include "zone.h"
 
-const char * to_c_str(const ZoneState & s) {
-    switch (s) {
-    case ZoneState::init:
-        return "init";
-    case ZoneState::on:
-        return "heat";
-    case ZoneState::off:
-        return "wait";
-    case ZoneState::open_valve:
-        return "open valve";
-    case ZoneState::close_valve:
-        return "close valve";
-    default:
-        return "error";
-    }
-}
-
 Zone::Zone()
-    : reading(std::numeric_limits<double>::quiet_NaN()), valve_open(false),
+    : reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::open),
       desired(21.0), hysteresis(0.5), state(ZoneState::init) {
 }
 
@@ -39,51 +22,59 @@ const Zone & Zone::operator=(const Zone & other) {
 
 void Zone::tick() {
     const bool reading_timeout = reading.elapsed_millis() >= 2 * 60 * 1000;
-    const bool valve_timeout = valve_open.elapsed_millis() >= 2 * 60 * 1000;
+    const bool valve_timeout = valve_state.elapsed_millis() >= 2 * 60 * 1000;
+
+    if (valve_timeout) {
+        valve_state = ValveState::error;
+    }
+
+    if (reading_timeout) {
+        reading = std::numeric_limits<double>::quiet_NaN();
+    }
 
     // FSM inputs
-    const bool comms_timeout = reading_timeout || valve_timeout;
-    const bool no_reading = std::isnan(reading);
-    const bool error = no_reading || comms_timeout;
+    const bool comms_timeout = (reading_timeout || valve_timeout);
+    const bool error = (valve_state == ValveState::error) || std::isnan(reading);
     const bool warm = reading >= desired + hysteresis;
     const bool cold = reading <= desired - hysteresis;
 
     switch (state) {
-    case ZoneState::init:
-        if (comms_timeout) {
-            state = ZoneState::error;
-        } else if (!std::isnan(reading)) {
-            state = ZoneState::off;
-        }
-        break;
-    case ZoneState::error:
-        state = error ? ZoneState::error : ZoneState::off;
-        break;
+        case ZoneState::init:
+            if (comms_timeout) {
+                state = ZoneState::error;
+            } else if (!error) {
+                state = ZoneState::off;
+            }
+            break;
 
-    case ZoneState::off:
-    case ZoneState::close_valve:
-        if (error) {
-            state = ZoneState::error;
-        } else if (cold) {
-            state = ZoneState::open_valve;
-        } else {
-            state = valve_open ? ZoneState::close_valve : ZoneState::off;
-        }
-        break;
+        case ZoneState::error:
+            state = error ? ZoneState::error : ZoneState::off;
+            break;
 
-    case ZoneState::on:
-    case ZoneState::open_valve:
-        if (error) {
-            state = ZoneState::error;
-        } else if (warm) {
-            state = ZoneState::close_valve;
-        } else {
-            state = valve_open ? ZoneState::on : ZoneState::open_valve;
-        }
-        break;
+        case ZoneState::off:
+        case ZoneState::close_valve:
+            if (error) {
+                state = ZoneState::error;
+            } else if (cold) {
+                state = ZoneState::open_valve;
+            } else {
+                state = (valve_state == ValveState::open) ? ZoneState::close_valve : ZoneState::off;
+            }
+            break;
 
-    default:
-        state = ZoneState::error;
+        case ZoneState::on:
+        case ZoneState::open_valve:
+            if (error) {
+                state = ZoneState::error;
+            } else if (warm) {
+                state = ZoneState::close_valve;
+            } else {
+                state = (valve_state == ValveState::open) ? ZoneState::on : ZoneState::open_valve;
+            }
+            break;
+
+        default:
+            state = ZoneState::error;
     }
 }
 
@@ -109,8 +100,9 @@ DynamicJsonDocument Zone::to_json() const {
 bool Zone::load(const JsonVariant & json) {
     const auto obj = json.as<JsonObject>();
 
-    if (obj.isNull())
+    if (obj.isNull()) {
         return false;
+    }
 
     // TODO: validate
     if (obj.containsKey("desired")) {

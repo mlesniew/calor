@@ -25,10 +25,12 @@ std::string uri_unquote(const std::string & s) {
     while (*r) {
         if (*r == '%') {
             char c1, c2;
-            if (!(c1 = *++r))
+            if (!(c1 = *++r)) {
                 break;
-            if (!(c2 = *++r))
+            }
+            if (!(c2 = *++r)) {
                 break;
+            }
             char x[3] = {c1, c2, '\0'};
             *w = (char) hex_to_dec(x);
         } else {
