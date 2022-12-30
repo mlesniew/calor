@@ -10,6 +10,7 @@
 
 #include <utils/io.h>
 #include <utils/periodic_run.h>
+#include <utils/reset_button.h>
 #include <utils/stopwatch.h>
 #include <utils/wifi_control.h>
 
@@ -19,7 +20,8 @@
 #include "valvola.h"
 #include "zone.h"
 
-PinInput<D1, true> button;
+PinInput<D1, false> button;
+ResetButton reset_button(button);
 
 PinOutput<D4, true> wifi_led;
 PinOutput<D5, true> status_led;
@@ -174,8 +176,9 @@ void setup() {
 
     wifi_led.init();
     status_led.init();
+    reset_button.init();
 
-    const auto mode = WiFiInitMode::saved; // button ? WiFiInitMode::setup : WiFiInitMode::saved;
+    const auto mode = button ? WiFiInitMode::setup : WiFiInitMode::saved;
     wifi_control.init(mode, "calor");
 
     setup_server();
