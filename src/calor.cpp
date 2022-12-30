@@ -172,7 +172,7 @@ void setup_server() {
 }
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     wifi_led.init();
     status_led.init();
