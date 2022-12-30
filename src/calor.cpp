@@ -218,10 +218,22 @@ void setup() {
     valve_relay.set(false);
 
     wifi_led.init();
-    status_led.init();
+    wifi_led.set(true);
 
     Serial.begin(115200);
 
+    Serial.println(F("\n\n"
+        "  ___      _\n"
+        " / __|__ _| |___ _ _\n"
+        "| (__/ _` | / _ \\ '_|\n"
+        " \\___\\__,_|_\\___/_|\n"
+        "\n"
+        "Calor " __DATE__ " " __TIME__ "\n"
+        "\n\n"
+        "Press and hold button now to enter WiFi setup.\n"
+    ));
+
+    delay(3000);
     reset_button.init();
 
     wifi_control.init(button ? WiFiInitMode::setup : WiFiInitMode::saved, "calor");
