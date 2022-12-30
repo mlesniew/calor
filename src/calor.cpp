@@ -25,24 +25,20 @@
 PinInput<D1, false> button;
 ResetButton reset_button(button);
 
+PinOutput<D5, true> heating_relay;
+PinOutput<D6, true> valve_relay;
+
 PinOutput<D4, true> wifi_led;
-PinOutput<D5, true> status_led;
-
-PinOutput<D6, false> heating_relay;
-PinOutput<D7, false> valve_relay;
-DummyOutput other_relay;
-
 WiFiControl wifi_control(wifi_led);
 
 std::map<std::string, Zone> zones;
 std::set<std::string> celsius_addresses;
 std::set<std::string> valvola_addresses;
+Valve local_valve(valve_relay, "built-in valve");
 
 ESP8266WebServer server(80);
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
-
-Valve local_valve(valve_relay, "built-in valve");
 
 void return_json(const JsonDocument & json, unsigned int code = 200) {
     String output;
