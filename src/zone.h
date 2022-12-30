@@ -21,8 +21,9 @@ class Zone: public Tickable {
         bool valve_desired_state() const;
         bool boiler_desired_state() const;
 
-        DynamicJsonDocument to_json() const;
-        bool load(const JsonVariant & json);
+        DynamicJsonDocument get_config() const;
+        DynamicJsonDocument get_status() const;
+        bool set_config(const JsonVariantConst & json);
 
         TimedValue<double> reading;
         TimedValue<ValveState> valve_state;

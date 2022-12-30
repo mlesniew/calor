@@ -86,19 +86,26 @@ bool Zone::valve_desired_state() const {
     return (state == ZoneState::on) || (state == ZoneState::open_valve);
 }
 
-DynamicJsonDocument Zone::to_json() const {
+DynamicJsonDocument Zone::get_config() const {
     DynamicJsonDocument json(64);
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
+
+    return json;
+}
+
+DynamicJsonDocument Zone::get_status() const {
+    DynamicJsonDocument json = get_config();
+
     json["reading"] = double(reading);
     json["state"] = to_c_str(state);
 
     return json;
 }
 
-bool Zone::load(const JsonVariant & json) {
-    const auto obj = json.as<JsonObject>();
+bool Zone::set_config(const JsonVariantConst & json) {
+    const auto obj = json.as<JsonObjectConst>();
 
     if (obj.isNull()) {
         return false;

@@ -1,0 +1,26 @@
+{
+    "celsius": [
+        "celsius.lan"
+    ],
+    "valve": {
+        "name": "Living room",
+        "switch_time": 10
+    },
+    "valvola": [
+        "valvola.lan"
+    ],
+    "zones": {
+        "Bathroom": {
+            "desired": 23,
+            "hysteresis": 0.5
+        },
+        "Bedroom": {
+            "desired": 18,
+            "hysteresis": 0.5
+        },
+        "Living room": {
+            "desired": 21,
+            "hysteresis": 0.5
+        }
+    }
+}

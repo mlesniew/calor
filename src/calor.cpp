@@ -4,11 +4,13 @@
 
 #include <Arduino.h>
 #include <ESP8266WebServer.h>
+#include <LittleFS.h>
 #include <uri/UriRegex.h>
 
 #include <ArduinoJson.h>
 
 #include <utils/io.h>
+#include <utils/json_config.h>
 #include <utils/periodic_run.h>
 #include <utils/reset_button.h>
 #include <utils/stopwatch.h>
@@ -33,14 +35,121 @@ DummyOutput other_relay;
 WiFiControl wifi_control(wifi_led);
 
 std::map<std::string, Zone> zones;
-std::set<std::string> celsius_addresses = {"192.168.1.200"};
-std::set<std::string> valvola_addresses = {"192.168.1.230"};
+std::set<std::string> celsius_addresses;
+std::set<std::string> valvola_addresses;
 
 ESP8266WebServer server(80);
 
+const char CONFIG_FILE[] PROGMEM = "/config.json";
+
 Valve local_valve(valve_relay, "built-in valve");
 
+void return_json(const JsonDocument & json, unsigned int code = 200) {
+    String output;
+    serializeJson(json, output);
+    server.send(code, F("application/json"), output);
+}
+
+DynamicJsonDocument get_config() {
+    DynamicJsonDocument json(1024);
+
+    auto zone_config = json["zones"].to<JsonObject>();
+    for (auto & kv : zones) {
+        zone_config[kv.first] = kv.second.get_config();
+    }
+
+    auto valvola_config = json["valvola"].to<JsonArray>();
+    for (const auto & address : valvola_addresses) {
+        valvola_config.add(address);
+    }
+
+    auto celsius_config = json["celsius"].to<JsonArray>();
+    for (const auto & address : celsius_addresses) {
+        celsius_config.add(address);
+    }
+
+    json["valve"] = local_valve.get_config();
+
+    return json;
+}
+
 void setup_server() {
+
+    server.on("/zones", HTTP_GET, [] {
+        StaticJsonDocument<1024> json;
+
+        for (auto & kv : zones)
+            json[kv.first] = kv.second.get_status();
+
+        return_json(json);
+    });
+
+    server.on("/config", HTTP_GET, [] {
+        return_json(get_config());
+    });
+
+    server.on("/config/save", HTTP_POST, [] {
+        const auto json = get_config();
+        File f = LittleFS.open(FPSTR(CONFIG_FILE), "w");
+        if (!f) {
+            server.send(500);
+            return;
+        }
+        serializeJson(json, f);
+        f.close();
+        server.send(200);
+    });
+
+    server.on(UriRegex("/config/(celsius|valvola)/([^/]+)"), [] {
+        std::set<std::string> & addresses = server.pathArg(0).c_str()[0] == 'c' ? celsius_addresses : valvola_addresses;
+        const std::string name = uri_unquote(server.pathArg(1).c_str());
+
+        switch (server.method()) {
+            case HTTP_POST:
+            case HTTP_PUT:
+                addresses.insert(name);
+                server.send(200);
+                return;
+            case HTTP_DELETE:
+                addresses.erase(name);
+                server.send(200);
+                return;
+            default:
+                server.send(405);
+                return;
+        }
+    });
+
+    server.on("/config/valve", [] {
+        switch (server.method()) {
+            case HTTP_PUT:
+            case HTTP_POST:
+            case HTTP_PATCH: {
+                StaticJsonDocument<128> json;
+
+                const auto error = deserializeJson(json, server.arg("plain"));
+                if (error) {
+                    server.send(400);
+                    return;
+                }
+
+                if (!local_valve.set_config(json.as<JsonVariant>())) {
+                    server.send(400);
+                    return;
+                }
+            }
+
+            // fall through
+            case HTTP_GET: {
+                return_json(local_valve.get_config());
+                return;
+            }
+
+            default:
+                server.send(405);
+                return;
+        }
+    });
 
     server.on(UriRegex("/zones/([^/]+)"), [] {
         const std::string name = uri_unquote(server.pathArg(0).c_str());
@@ -55,10 +164,10 @@ void setup_server() {
             (server.method() == HTTP_DELETE));
 
         if (zone_exists && !zone_should_exist) {
-            server.send(409, "text/plain", "Zone exists");
+            server.send(409);
             return;
         } else if (!zone_exists && zone_should_exist) {
-            server.send(404, "text/plain", "No such zone");
+            server.send(404);
             return;
         }
 
@@ -70,12 +179,12 @@ void setup_server() {
             const auto error = deserializeJson(json, server.arg("plain"));
 
             if (error) {
-                server.send(400, "text/plain", error.f_str());
+                server.send(400);
                 return;
             }
 
-            if (!parsed_zone.load(json.as<JsonVariant>())) {
-                server.send(400, "text/plain", "data invalid");
+            if (!parsed_zone.set_config(json.as<JsonVariant>())) {
+                server.send(400);
                 return;
             }
         }
@@ -90,101 +199,64 @@ void setup_server() {
                 break;
             case HTTP_DELETE:
                 zones.erase(it);
-                server.send(200, "text/plain", "zone deleted");
+                server.send(200);
                 return;
             case HTTP_GET:
                 break;
             default:
-                server.send(405, "text/plain", "invalid request");
+                server.send(405);
                 return;
         }
 
-        // return zone
-        String output;
-        serializeJson(it->second.to_json(), output);
-        server.send(200, "application/json", output);
-    });
-
-    server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)"), HTTP_GET, [] {
-        const std::string name = uri_unquote(server.pathArg(0).c_str());
-        const auto it = zones.find(name);
-
-        if (it == zones.end()) {
-            server.send(404, "text/plain", "No such zone");
-            return;
-        }
-
-        const Zone & zone = it->second;
-
-        double value;
-        switch (server.pathArg(1).c_str()[0]) {
-            case 'd':
-                value = zone.desired;
-                break;
-            case 'h':
-                value = zone.hysteresis;
-                break;
-            case 'r':
-                value = zone.reading;
-                break;
-        }
-
-        server.send(200, "text/plain", String(value));
-    });
-
-    server.on(UriRegex("/zones/([^/]+)/(desired|hysteresis|reading)/([0-9]+([.][0-9]+)?)"), HTTP_POST, [] {
-        const std::string name = uri_unquote(server.pathArg(0).c_str());
-
-        auto it = zones.find(name);
-        if (it == zones.end()) {
-            server.send(404, "text/plain", "No such zone");
-            return;
-        }
-
-        Zone & zone = it->second;
-
-        const auto value = server.pathArg(2).toDouble();
-
-        switch (server.pathArg(1).c_str()[0]) {
-            case 'd':
-                if ((value < 0) || (value > 30.0)) {
-                    server.send(400, "text/plain", "Value out of bounds");
-                } else {
-                    zone.desired = value;
-                    server.send(200, "text/plain", "OK");
-                }
-                return;
-
-            case 'h':
-                if ((value < 0) || (value > 5)) {
-                    server.send(400, "text/plain", "Value out of bounds");
-                } else {
-                    zone.hysteresis = value;
-                    server.send(200, "text/plain", "OK");
-                }
-                return;
-        }
-
-        server.send(400, "text/plain", "Bad request");
+        return_json(it->second.get_status());
     });
 
     server.begin();
 }
 
 void setup() {
-    Serial.begin(115200);
+    heating_relay.init();
+    heating_relay.set(false);
+
+    valve_relay.init();
+    valve_relay.set(false);
 
     wifi_led.init();
     status_led.init();
+
+    Serial.begin(115200);
+
     reset_button.init();
 
-    const auto mode = button ? WiFiInitMode::setup : WiFiInitMode::saved;
-    wifi_control.init(mode, "calor");
+    wifi_control.init(button ? WiFiInitMode::setup : WiFiInitMode::saved, "calor");
+
+    LittleFS.begin();
+
+    {
+        const auto config = JsonConfigFile(LittleFS, FPSTR(CONFIG_FILE), 1024);
+
+        for (JsonVariantConst v : config["celsius"].as<JsonArrayConst>()) {
+            const auto addr = v.as<std::string>();
+            if (!addr.empty()) {
+                celsius_addresses.insert(addr);
+            }
+        }
+
+        for (JsonVariantConst v : config["valvola"].as<JsonArrayConst>()) {
+            const auto addr = v.as<std::string>();
+            if (!addr.empty()) {
+                valvola_addresses.insert(addr);
+            }
+        }
+
+        for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
+            zones[kv.key().c_str()].set_config(kv.value());
+        }
+
+        local_valve.set_config(config["valve"]);
+    }
 
     setup_server();
-
-    zones["Living room"];
-    zones["Bedroom"];
 }
 
 PeriodicRun celsius_proc(60, 3, [] {
