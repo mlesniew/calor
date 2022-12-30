@@ -267,7 +267,7 @@ void setup() {
     setup_server();
 }
 
-PeriodicRun celsius_proc(60, 3, [] {
+PeriodicRun celsius_proc(60, 5, [] {
     for (const auto & address : celsius_addresses) {
         const auto readings = get_celsius_readings(address);
         for (const auto & kv : readings) {
@@ -282,7 +282,7 @@ PeriodicRun celsius_proc(60, 3, [] {
     }
 });
 
-PeriodicRun local_valve_proc(60, 5, [] {
+PeriodicRun local_valve_proc(5, 0, [] {
     auto it = zones.find(local_valve.name);
     if (it == zones.end()) {
         local_valve.demand_open = false;
@@ -328,7 +328,7 @@ PeriodicRun valvola_proc(60, 5, [] {
 
 });
 
-PeriodicRun heating_proc(10, 4, [] {
+PeriodicRun heating_proc(10, 10, [] {
     bool boiler_on = false;
     printf("Checking %i zones...\n", zones.size());
 
@@ -337,9 +337,9 @@ PeriodicRun heating_proc(10, 4, [] {
         auto & zone = kv.second;
         zone.tick();
         boiler_on = boiler_on || zone.boiler_desired_state();
-        printf("  %s: %s  reading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
-               name.c_str(), zone.boiler_desired_state() ? "ON" : "OFF",
-               (double) zone.reading, zone.desired, zone.hysteresis
+        printf("  %s:\t%s\treading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
+               name.c_str(), to_c_str(zone.get_state()),
+               (double) zone.reading, zone.desired, 0.5 * zone.hysteresis
               );
     };
 

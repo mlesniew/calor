@@ -30,6 +30,8 @@ class Zone: public Tickable {
 
         double desired, hysteresis;
 
+        ZoneState get_state() const { return state; }
+
     protected:
         ZoneState state;
 };

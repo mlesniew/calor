@@ -35,8 +35,8 @@ void Zone::tick() {
     // FSM inputs
     const bool comms_timeout = (reading_timeout || valve_timeout);
     const bool error = (valve_state == ValveState::error) || std::isnan(reading);
-    const bool warm = reading >= desired + hysteresis;
-    const bool cold = reading <= desired - hysteresis;
+    const bool warm = reading >= desired + 0.5 * hysteresis;
+    const bool cold = reading <= desired - 0.5 * hysteresis;
 
     switch (state) {
         case ZoneState::init:
