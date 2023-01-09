@@ -7,3 +7,6 @@
 [submodule "lib/ArduinoJson"]
 	path = lib/ArduinoJson
 	url = https://github.com/bblanchon/ArduinoJson.git
+[submodule "lib/esp-prometheus"]
+	path = lib/esp-prometheus
+	url = git@github.com:mlesniew/esp-prometheus.git

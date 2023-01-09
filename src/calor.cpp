@@ -299,15 +299,6 @@ PeriodicRun local_valve_proc(5, 0, [] {
 });
 
 PeriodicRun valvola_proc(60, 5, [] {
-    String output;
-    DynamicJsonDocument json(1024);
-    for (auto & kv : zones) {
-        const auto & name = kv.first;
-        auto & zone = kv.second;
-        json[name] = zone.valve_desired_state();
-    }
-    serializeJson(json, output);
-
     for (const auto & address : valvola_addresses) {
         std::map<std::string, bool> desired_valve_states;
         for (auto & kv : zones) {
