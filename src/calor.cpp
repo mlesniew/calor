@@ -1,4 +1,4 @@
-#include <map>
+#include <vector>
 #include <set>
 #include <string>
 
@@ -31,7 +31,7 @@ PinOutput<D6, true> valve_relay;
 PinOutput<D4, true> wifi_led;
 WiFiControl wifi_control(wifi_led);
 
-std::map<std::string, Zone> zones;
+std::vector<Zone> zones;
 std::set<std::string> celsius_addresses;
 std::set<std::string> valvola_addresses;
 Valve local_valve(valve_relay, "built-in valve");
@@ -46,12 +46,19 @@ void return_json(const JsonDocument & json, unsigned int code = 200) {
     server.send(code, F("application/json"), output);
 }
 
+std::vector<Zone>::iterator find_zone_by_name(const std::string & name) {
+    std::vector<Zone>::iterator it = zones.begin();
+    while (it != zones.end() && it->name != name)
+        ++it;
+    return it;
+}
+
 DynamicJsonDocument get_config() {
     DynamicJsonDocument json(1024);
 
     auto zone_config = json["zones"].to<JsonObject>();
-    for (auto & kv : zones) {
-        zone_config[kv.first] = kv.second.get_config();
+    for (const auto & zone : zones) {
+        zone_config[zone.name] = zone.get_config();
     }
 
     auto valvola_config = json["valvola"].to<JsonArray>();
@@ -74,8 +81,9 @@ void setup_server() {
     server.on("/zones", HTTP_GET, [] {
         StaticJsonDocument<1024> json;
 
-        for (auto & kv : zones)
-            json[kv.first] = kv.second.get_status();
+        for (const auto & zone : zones) {
+            json[zone.name] = zone.get_status();
+        }
 
         return_json(json);
     });
@@ -150,7 +158,7 @@ void setup_server() {
     server.on(UriRegex("/zones/([^/]+)"), [] {
         const std::string name = uri_unquote(server.pathArg(0).c_str());
 
-        auto it = zones.find(name);
+        auto it = find_zone_by_name(name);
 
         // check for conflicts
         const bool zone_exists = (it != zones.end());
@@ -169,7 +177,7 @@ void setup_server() {
 
         // parse data if needed
         const bool parse_upload = ((server.method() == HTTP_POST) || (server.method() == HTTP_PUT));
-        Zone parsed_zone;
+        Zone parsed_zone(name);
         if (parse_upload) {
             StaticJsonDocument<64> json;
             const auto error = deserializeJson(json, server.arg("plain"));
@@ -188,10 +196,11 @@ void setup_server() {
         // perform action
         switch (server.method()) {
             case HTTP_POST:
-                it = zones.insert({name, parsed_zone}).first;
+                zones.push_back(parsed_zone);
+                it = zones.end() - 1;
                 break;
             case HTTP_PUT:
-                it->second = parsed_zone;
+                it->copy_config_from(parsed_zone);
                 break;
             case HTTP_DELETE:
                 zones.erase(it);
@@ -204,7 +213,7 @@ void setup_server() {
                 return;
         }
 
-        return_json(it->second.get_status());
+        return_json(it->get_status());
     });
 
     server.begin();
@@ -258,7 +267,9 @@ void setup() {
         }
 
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
-            zones[kv.key().c_str()].set_config(kv.value());
+            Zone zone(kv.key().c_str());
+            zone.set_config(kv.value());
+            zones.push_back(zone);
         }
 
         local_valve.set_config(config["valve"]);
@@ -274,62 +285,58 @@ PeriodicRun celsius_proc(60, 5, [] {
             const auto & name = kv.first;
             const double reading = kv.second;
             printf("Temperature in %s = %.2f ºC\n", name.c_str(), reading);
-            auto it = zones.find(name);
+            auto it = find_zone_by_name(name);
             if (it != zones.end()) {
-                it->second.reading = reading;
+                it->reading = reading;
             }
         }
     }
 });
 
 PeriodicRun local_valve_proc(5, 0, [] {
-    auto it = zones.find(local_valve.name);
+    auto it = find_zone_by_name(local_valve.name);
     if (it == zones.end()) {
         local_valve.demand_open = false;
         local_valve.tick();
         return;
     }
 
-    auto & zone = it->second;
-
-    local_valve.demand_open = zone.valve_desired_state();
+    local_valve.demand_open = it->valve_desired_state();
     local_valve.tick();
 
-    zone.valve_state = local_valve.get_state();
+    it->valve_state = local_valve.get_state();
 });
 
 PeriodicRun valvola_proc(60, 5, [] {
     for (const auto & address : valvola_addresses) {
         std::map<std::string, bool> desired_valve_states;
-        for (auto & kv : zones) {
-            desired_valve_states[kv.first] = kv.second.valve_desired_state();
+        for (const auto & zone : zones) {
+            desired_valve_states[zone.name] = zone.valve_desired_state();
         }
 
         const auto valve_states = update_valvola(address, desired_valve_states);
+
         for (const auto & kv : valve_states) {
             const auto & name = kv.first;
             const auto state = kv.second;
             printf("Valve state %s = %s\n", name.c_str(), to_c_str(state));
-            auto it = zones.find(name);
+            auto it = find_zone_by_name(name);
             if (it != zones.end()) {
-                it->second.valve_state = state;
+                it->valve_state = state;
             }
         }
     }
-
 });
 
 PeriodicRun heating_proc(10, 10, [] {
     bool boiler_on = false;
     printf("Checking %i zones...\n", zones.size());
 
-    for (auto & kv : zones) {
-        const auto & name = kv.first;
-        auto & zone = kv.second;
+    for (auto & zone : zones) {
         zone.tick();
         boiler_on = boiler_on || zone.boiler_desired_state();
-        printf("  %s:\t%s\treading %.2f ºC; desired %.2f ºC ± %.2f ºC\n",
-               name.c_str(), to_c_str(zone.get_state()),
+        printf("  %s:\t%s\treading %.2f ºC\tdesired %.2f ºC ± %.2f ºC\n",
+               zone.name.c_str(), to_c_str(zone.get_state()),
                (double) zone.reading, zone.desired, 0.5 * zone.hysteresis
               );
     };

@@ -4,20 +4,14 @@
 
 #include "zone.h"
 
-Zone::Zone()
-    : reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::open),
+Zone::Zone(const std::string & name)
+    : name(name), reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::open),
       desired(21.0), hysteresis(0.5), state(ZoneState::init) {
 }
 
-Zone::Zone(const Zone & other)
-    : Zone() {
-    *this = other;
-}
-
-const Zone & Zone::operator=(const Zone & other) {
-    desired = other.desired;
-    hysteresis = other.hysteresis;
-    return *this;
+void Zone::copy_config_from(const Zone & zone) {
+    desired = zone.desired;
+    hysteresis = zone.hysteresis;
 }
 
 void Zone::tick() {

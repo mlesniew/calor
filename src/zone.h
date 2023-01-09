@@ -1,6 +1,8 @@
 #ifndef ZONE_H
 #define ZONE_H
 
+#include <string>
+
 #include <ArduinoJson.h>
 
 #include <utils/tickable.h>
@@ -12,9 +14,9 @@
 
 class Zone: public Tickable {
     public:
-        Zone();
-        Zone(const Zone & zone);
-        const Zone & operator=(const Zone & zone);
+        Zone(const std::string & name);
+
+        void copy_config_from(const Zone & zone);
 
         void tick();
 
@@ -24,6 +26,8 @@ class Zone: public Tickable {
         DynamicJsonDocument get_config() const;
         DynamicJsonDocument get_status() const;
         bool set_config(const JsonVariantConst & json);
+
+        std::string name;
 
         TimedValue<double> reading;
         TimedValue<ValveState> valve_state;
