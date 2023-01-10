@@ -49,8 +49,9 @@ void return_json(const JsonDocument & json, unsigned int code = 200) {
 
 std::vector<Zone>::iterator find_zone_by_name(const std::string & name) {
     std::vector<Zone>::iterator it = zones.begin();
-    while (it != zones.end() && it->name != name)
+    while (it != zones.end() && it->name != name) {
         ++it;
+    }
     return it;
 }
 
@@ -238,15 +239,15 @@ void setup() {
     Serial.begin(115200);
 
     Serial.println(F("\n\n"
-        "  ___      _\n"
-        " / __|__ _| |___ _ _\n"
-        "| (__/ _` | / _ \\ '_|\n"
-        " \\___\\__,_|_\\___/_|\n"
-        "\n"
-        "Calor " __DATE__ " " __TIME__ "\n"
-        "\n\n"
-        "Press and hold button now to enter WiFi setup.\n"
-    ));
+                     "  ___      _\n"
+                     " / __|__ _| |___ _ _\n"
+                     "| (__/ _` | / _ \\ '_|\n"
+                     " \\___\\__,_|_\\___/_|\n"
+                     "\n"
+                     "Calor " __DATE__ " " __TIME__ "\n"
+                     "\n\n"
+                     "Press and hold button now to enter WiFi setup.\n"
+                    ));
 
     delay(3000);
     reset_button.init();
