@@ -214,6 +214,7 @@ void setup_server() {
                 return;
         }
 
+        it->tick();
         return_json(it->get_status());
     });
 
@@ -298,7 +299,7 @@ PeriodicRun celsius_proc(60, 5, [] {
     }
 });
 
-PeriodicRun local_valve_proc(5, 0, [] {
+PeriodicRun local_valve_proc(1, 0, [] {
     auto it = find_zone_by_name(local_valve.name);
     if (it == zones.end()) {
         local_valve.demand_open = false;
@@ -333,7 +334,7 @@ PeriodicRun valvola_proc(60, 5, [] {
     }
 });
 
-PeriodicRun heating_proc(10, 10, [] {
+PeriodicRun heating_proc(1, 10, [] {
     bool boiler_on = false;
     printf("Checking %i zones...\n", zones.size());
 

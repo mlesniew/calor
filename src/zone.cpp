@@ -6,7 +6,7 @@
 #include "metrics.h"
 
 Zone::Zone(const std::string & name)
-    : name(name), reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::open),
+    : name(name), reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::error),
       desired(21.0), hysteresis(0.5), state(ZoneState::init) {
 }
 
