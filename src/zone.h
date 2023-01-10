@@ -15,6 +15,7 @@
 class Zone: public Tickable {
     public:
         Zone(const std::string & name);
+        ~Zone();
 
         void copy_config_from(const Zone & zone);
 

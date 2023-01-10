@@ -3,13 +3,12 @@
 
 #include <string>
 
-
 enum class ValveState {
-    closed,
-    opening,
-    open,
-    closing,
-    error
+    closed = 0,
+    opening = 1,
+    closing = 2,
+    open = 3,
+    error = -1,
 };
 
 const char * to_c_str(const ValveState & s);

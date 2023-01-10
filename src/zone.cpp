@@ -3,10 +3,19 @@
 #include <ArduinoJson.h>
 
 #include "zone.h"
+#include "metrics.h"
 
 Zone::Zone(const std::string & name)
     : name(name), reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::open),
       desired(21.0), hysteresis(0.5), state(ZoneState::init) {
+}
+
+Zone::~Zone() {
+    metrics::zone_state.remove({{"zone", name}});
+    metrics::zone_desired_temperature.remove({{"zone", name}});
+    metrics::zone_desired_temperature_hysteresis.remove({{"zone", name}});
+    metrics::zone_actual_temperature.remove({{"zone", name}});
+    metrics::zone_valve_state.remove({{"zone", name}});
 }
 
 void Zone::copy_config_from(const Zone & zone) {
@@ -70,6 +79,13 @@ void Zone::tick() {
         default:
             state = ZoneState::error;
     }
+
+    metrics::zone_state[ {{"zone", name}}].set(static_cast<typename std::underlying_type<ZoneState>::type>(state));
+    metrics::zone_desired_temperature[ {{"zone", name}}].set(desired);
+    metrics::zone_desired_temperature_hysteresis[ {{"zone", name}}].set(hysteresis);
+    metrics::zone_actual_temperature[ {{"zone", name}}].set(reading);
+    metrics::zone_valve_state[ {{"zone", name}}].set(static_cast<typename std::underlying_type<ValveState>::type>
+            (ValveState(valve_state)));
 }
 
 bool Zone::boiler_desired_state() const {

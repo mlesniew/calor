@@ -15,6 +15,7 @@
 class Valve: public Tickable {
     public:
         Valve(BinaryOutput & output, const std::string & name = "", const unsigned long switch_time_millis = 0);
+        ~Valve();
 
         void tick() override;
         ValveState get_state() const {

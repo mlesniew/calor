@@ -17,6 +17,7 @@
 #include <utils/wifi_control.h>
 
 #include "celsius.h"
+#include "metrics.h"
 #include "utils.h"
 #include "valve.h"
 #include "valvola.h"
@@ -216,6 +217,10 @@ void setup_server() {
         return_json(it->get_status());
     });
 
+    metrics::prometheus.labels["module"] = "calor";
+
+    metrics::prometheus.register_metrics_endpoint(server);
+
     server.begin();
 }
 
@@ -343,6 +348,7 @@ PeriodicRun heating_proc(10, 10, [] {
 
     printf("Zone processing complete, heating: %s\n", boiler_on ? "ON" : "OFF");
     heating_relay.set(boiler_on);
+    metrics::heating_demand.set(boiler_on);
 });
 
 void loop() {
