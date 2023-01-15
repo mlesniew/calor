@@ -61,7 +61,7 @@ void Zone::tick() {
             } else if (cold) {
                 state = ZoneState::open_valve;
             } else {
-                state = (valve_state == ValveState::open) ? ZoneState::close_valve : ZoneState::off;
+                state = (valve_state == ValveState::closed) ? ZoneState::off : ZoneState::close_valve;
             }
             break;
 
