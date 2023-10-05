@@ -178,12 +178,13 @@ void setup() {
             return;
         }
 
+        const auto source = PicoMQTT::Subscriber::get_topic_element(topic, 1);
         const double temperature = atof(payload);
 
         auto it = find_zone_by_name(zone_name.c_str());
         if (it != zones.end()) {
             Serial.printf("Temperature update for zone %s: %.2f ºC\n", zone_name.c_str(), temperature);
-            it->reading = temperature;
+            it->update(source, temperature);
         }
     });
 
@@ -199,13 +200,15 @@ void setup() {
             return;
         }
 
+        const auto source = PicoMQTT::Subscriber::get_topic_element(topic, 1);
+
         const auto temperature = json["tempc"].as<double>();
         const auto sensor = json["id"] | "";
 
         auto it = find_zone_by_sensor(sensor);
         if (it != zones.end()) {
             Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->get_name(), temperature);
-            it->reading = temperature;
+            it->update(source, temperature, json["rssi"].as<double>());
         }
     });
 
@@ -242,7 +245,7 @@ PicoUtils::PeriodicRun heating_proc(5, 10, [] {
         boiler_on = boiler_on || zone.boiler_desired_state();
         printf("  %16s:\t%5s\treading %5.2f ºC\t(updated %4lu s ago)\tdesired %5.2f ºC ± %3.2f ºC\n",
                zone.get_name(), to_c_str(zone.get_state()),
-               (double) zone.reading, zone.reading.elapsed_millis() / 1000,
+               (double) zone.get_reading(), zone.get_seconds_since_last_reading_update(),
                zone.desired, 0.5 * zone.hysteresis
               );
     };

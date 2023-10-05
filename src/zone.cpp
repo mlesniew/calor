@@ -10,11 +10,13 @@ Prometheus & get_prometheus();
 
 namespace {
 PrometheusGauge zone_state(get_prometheus(), "zone_state", "Zone state enum");
-PrometheusGauge zone_desired_temperature(get_prometheus(), "zone_temperature_desired", "Zone's desired temperature");
-PrometheusGauge zone_desired_temperature_hysteresis(get_prometheus(), "zone_temperature_desired_hysteresis",
+PrometheusGauge zone_temperature_desired(get_prometheus(), "zone_temperature_desired", "Zone's desired temperature");
+PrometheusGauge zone_temperature_hysteresis(get_prometheus(), "zone_temperature_desired_hysteresis",
         "Zone's desired temperature hysteresis");
-PrometheusGauge zone_actual_temperature(get_prometheus(), "zone_temperature_actual", "Zone's actual temperature");
+PrometheusGauge zone_temperature_reading(get_prometheus(), "zone_temperature_reading", "Zone's actual temperature");
 PrometheusGauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zone's valve state enum");
+PrometheusHistogram zone_temperature_reading_update_interval_seconds(get_prometheus(), "zone_temperature_reading_update_interval_seconds", "Zone temperature reading update interval in seconds", {1, 5, 10, 15, 30, 45, 60, 90, 120, 300});
+PrometheusGauge zone_sensor_rssi(get_prometheus(), "zone_sensor_rssi", "Zone's Sensor RSSI");
 }
 
 Zone::Zone(const char * name, const JsonVariantConst & json)
@@ -97,6 +99,33 @@ void Zone::tick() {
     update_metric();
 }
 
+void Zone::set_reading(double value) {
+
+    zone_temperature_reading_update_interval_seconds[get_prometheus_labels()].observe(get_seconds_since_last_reading_update());
+    reading = value;
+}
+
+void Zone::update(const String & source, double temperature, double rssi) {
+    if (std::isnan(temperature))
+        return;
+
+    auto labels = get_prometheus_labels();
+    labels["source"] = source.c_str();
+
+    reading = temperature;
+
+    const unsigned long now = millis();
+    unsigned long & last_update_time = reading_update_time_by_source[source];
+    const double elapsed_millis = 0.001 * (now - last_update_time);
+    last_update_time = now;
+
+    zone_temperature_reading_update_interval_seconds[labels].observe(elapsed_millis);
+
+    if (!std::isnan(reading)) {
+        zone_sensor_rssi[labels].set(rssi);
+    }
+}
+
 bool Zone::boiler_desired_state() const {
     return (get_state() == ZoneState::on);
 }
@@ -155,19 +184,20 @@ void Zone::update_mqtt() const {
 
 void Zone::delete_metric() const {
     const auto labels = get_prometheus_labels();
-    zone_state.remove(labels);
-    zone_desired_temperature.remove(labels);
-    zone_desired_temperature_hysteresis.remove(labels);
-    zone_actual_temperature.remove(labels);
-    zone_valve_state.remove(labels);
+    zone_state.remove(labels, false);
+    zone_temperature_desired.remove(labels, false);
+    zone_temperature_hysteresis.remove(labels, false);
+    zone_temperature_reading.remove(labels, false);
+    zone_valve_state.remove(labels, false);
+    zone_temperature_reading_update_interval_seconds.remove(labels, false);
 }
 
 void Zone::update_metric() const {
     const auto labels = get_prometheus_labels();
     zone_state[labels].set(static_cast<typename std::underlying_type<ZoneState>::type>(get_state()));
-    zone_desired_temperature[labels].set(desired);
-    zone_desired_temperature_hysteresis[labels].set(hysteresis);
-    zone_actual_temperature[labels].set(reading);
+    zone_temperature_desired[labels].set(desired);
+    zone_temperature_hysteresis[labels].set(hysteresis);
+    zone_temperature_reading[labels].set(reading);
     zone_valve_state[labels].set(static_cast<typename std::underlying_type<ValveState>::type>
                                  (ValveState(valve_state)));
 }
