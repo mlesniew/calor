@@ -56,6 +56,14 @@ std::vector<Zone>::iterator find_zone_by_name(const std::string & name) {
     return it;
 }
 
+std::vector<Zone>::iterator find_zone_by_sensor(const std::string & sensor) {
+    std::vector<Zone>::iterator it = zones.begin();
+    while (it != zones.end() && it->sensor != sensor) {
+        ++it;
+    }
+    return it;
+}
+
 DynamicJsonDocument get_config() {
     DynamicJsonDocument json(1024);
 
@@ -269,6 +277,28 @@ void setup() {
         auto it = find_zone_by_name(zone_name.c_str());
         if (it != zones.end()) {
             Serial.printf("Temperature update for zone %s: %.2f ºC\n", zone_name.c_str(), temperature);
+            it->reading = temperature;
+        }
+    });
+
+    get_mqtt().subscribe("+/+/BTtoMQTT/+", [](const char * topic, Stream & stream) {
+        StaticJsonDocument<512> json;
+
+        if (deserializeJson(json, stream)) {
+            // error
+            return;
+        }
+
+        if (!json.containsKey("tempc")) {
+            return;
+        }
+
+        const auto temperature = json["tempc"].as<double>();
+        const auto sensor = json["id"] | "";
+
+        auto it = find_zone_by_sensor(sensor);
+        if (it != zones.end()) {
+            Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->get_name(), temperature);
             it->reading = temperature;
         }
     });

@@ -122,13 +122,9 @@ bool Zone::set_config(const JsonVariantConst & json) {
     }
 
     // TODO: validate
-    if (obj.containsKey("desired")) {
-        desired = obj["desired"];
-    }
-
-    if (obj.containsKey("hysteresis")) {
-        hysteresis = obj["hysteresis"];
-    }
+    sensor = obj["sensor"] | "";
+    desired = obj["desired"] | 21;
+    hysteresis = obj["hysteresis"] | 0.5;
 
     return true;
 }
