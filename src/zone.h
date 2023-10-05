@@ -39,7 +39,6 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
         unsigned long get_seconds_since_last_reading_update() const { return reading.elapsed_millis() / 1000; }
 
         const String sensor;
-        const bool read_only;
         const double hysteresis;
 
         PicoUtils::TimedValue<double> reading;

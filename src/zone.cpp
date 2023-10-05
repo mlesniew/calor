@@ -25,10 +25,9 @@ PicoPrometheus::Gauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zo
 Zone::Zone(const char * name, const JsonVariantConst & json)
     : NamedFSM(name, ZoneState::init),
       sensor(json["sensor"] | ""),
-      read_only(json["read_only"] | false),
-      hysteresis(read_only ? std::numeric_limits<double>::quiet_NaN() : json["hysteresis"] | 0.5),
+      hysteresis(json["hysteresis"] | 0.5),
       reading(std::numeric_limits<double>::quiet_NaN()),
-      desired(read_only ? std::numeric_limits<double>::quiet_NaN() : json["desired"] | 21),
+      desired(json["desired"] | 21),
       valve_state(ValveState::error),
       mqtt_updater(30, 15, [this] { update_mqtt(); }) {
 
@@ -87,16 +86,6 @@ void Zone::tick() {
 
     if (reading_timeout) {
         reading = std::numeric_limits<double>::quiet_NaN();
-    }
-
-    if (read_only) {
-        desired = std::numeric_limits<double>::quiet_NaN();
-
-        if (get_state() != ZoneState::init || reading_timeout || !std::isnan(reading)) {
-            set_state(std::isnan(reading) ? ZoneState::error : ZoneState::off);
-        }
-
-        return;
     }
 
     // FSM inputs
@@ -158,7 +147,6 @@ DynamicJsonDocument Zone::get_config() const {
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
-    json["read_only"] = read_only;
     json["sensor"] = sensor;
 
     return json;
