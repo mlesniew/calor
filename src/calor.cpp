@@ -194,7 +194,7 @@ void setup() {
         const auto temperature = json["temperature"].as<double>();
 
         Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->get_name(), temperature);
-        it->update(source, temperature, json["rssi"].as<double>());
+        it->reading = temperature;
     });
 
     get_mqtt().subscribe("+/+/BTtoMQTT/+", [](const char * topic, Stream & stream) {
@@ -217,7 +217,7 @@ void setup() {
         auto it = find_zone_by_sensor(sensor);
         if (it != zones.end()) {
             Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->get_name(), temperature);
-            it->update(source, temperature, json["rssi"].as<double>());
+            it->reading = temperature;
         }
     });
 
@@ -254,7 +254,7 @@ PicoUtils::PeriodicRun heating_proc(5, 10, [] {
         boiler_on = boiler_on || zone.boiler_desired_state();
         printf("  %16s:\t%5s\treading %5.2f ºC\t(updated %4lu s ago)\tdesired %5.2f ºC ± %3.2f ºC\n",
                zone.get_name(), to_c_str(zone.get_state()),
-               (double) zone.get_reading(), zone.get_seconds_since_last_reading_update(),
+               (double) zone.reading, zone.get_seconds_since_last_reading_update(),
                zone.desired, 0.5 * zone.hysteresis
               );
     };

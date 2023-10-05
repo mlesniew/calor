@@ -35,11 +35,6 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
         DynamicJsonDocument get_config() const;
         DynamicJsonDocument get_status() const;
 
-        void set_reading(double value);
-        double get_reading() const { return reading; }
-
-        void update(const String & source, double temperature, double rssi = std::numeric_limits<double>::quiet_NaN());
-
         unsigned long get_seconds_since_last_reading_update() const { return reading.elapsed_millis() / 1000; }
 
         PicoUtils::TimedValue<ValveState> valve_state;
@@ -55,10 +50,9 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
 
         String unique_id() const;
 
-    protected:
-        std::map<String, unsigned long> reading_update_time_by_source;
         PicoUtils::TimedValue<double> reading;
 
+    protected:
         virtual const char * get_class_name() const override { return "Zone"; }
 
         void delete_metric() const override;
