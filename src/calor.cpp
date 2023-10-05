@@ -3,7 +3,6 @@
 #include <string>
 
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
 #include <LittleFS.h>
 #include <uri/UriRegex.h>
 
@@ -16,10 +15,10 @@
 #include <utils/reset_button.h>
 #include <utils/stopwatch.h>
 #include <utils/wifi_control.h>
+#include <utils/rest.h>
 #include <valve.h>
 
 #include "celsius.h"
-#include "utils.h"
 #include "zone.h"
 
 PicoMQTT::Server & get_mqtt() {
@@ -51,15 +50,9 @@ std::vector<Zone> zones;
 std::set<std::string> celsius_addresses;
 Valve local_valve(valve_relay, "built-in valve");
 
-ESP8266WebServer server(80);
+RestfulWebServer server(80);
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
-
-void return_json(const JsonDocument & json, unsigned int code = 200) {
-    String output;
-    serializeJson(json, output);
-    server.send(code, F("application/json"), output);
-}
 
 std::vector<Zone>::iterator find_zone_by_name(const std::string & name) {
     std::vector<Zone>::iterator it = zones.begin();
@@ -96,11 +89,11 @@ void setup_server() {
             json[zone.get_name()] = zone.get_status();
         }
 
-        return_json(json);
+        server.sendJson(json);
     });
 
     server.on("/config", HTTP_GET, [] {
-        return_json(get_config());
+        server.sendJson(get_config());
     });
 
     server.on("/config/save", HTTP_POST, [] {
@@ -116,7 +109,7 @@ void setup_server() {
     });
 
     server.on(UriRegex("/config/celsius/([^/]+)"), [] {
-        const std::string name = uri_unquote(server.pathArg(1).c_str());
+        const std::string name = server.decodedPathArg(1).c_str();
 
         switch (server.method()) {
             case HTTP_POST:
@@ -155,7 +148,7 @@ void setup_server() {
 
             // fall through
             case HTTP_GET: {
-                return_json(local_valve.get_config());
+                server.sendJson(local_valve.get_config());
                 return;
             }
 
@@ -166,7 +159,7 @@ void setup_server() {
     });
 
     server.on(UriRegex("/zones/([^/]+)"), [] {
-        const std::string name = uri_unquote(server.pathArg(0).c_str());
+        const std::string name = server.decodedPathArg(0).c_str();
 
         auto it = find_zone_by_name(name);
 
@@ -224,7 +217,7 @@ void setup_server() {
         }
 
         it->tick();
-        return_json(it->get_status());
+        server.sendJson(it->get_status());
     });
 
     get_prometheus().labels["module"] = "calor";
