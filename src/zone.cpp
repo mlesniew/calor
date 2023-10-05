@@ -6,7 +6,7 @@
 #include "metrics.h"
 
 Zone::Zone(const std::string & name)
-    : name(name), reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::error),
+    : name(name), reading(std::numeric_limits<double>::quiet_NaN()), valve_state(Valve::State::error),
       desired(21.0), hysteresis(0.5), state(ZoneState::init) {
 }
 
@@ -28,7 +28,7 @@ void Zone::tick() {
     const bool valve_timeout = valve_state.elapsed_millis() >= 2 * 60 * 1000;
 
     if (valve_timeout) {
-        valve_state = ValveState::error;
+        valve_state = Valve::State::error;
     }
 
     if (reading_timeout) {
@@ -37,7 +37,7 @@ void Zone::tick() {
 
     // FSM inputs
     const bool comms_timeout = (reading_timeout || valve_timeout);
-    const bool error = (valve_state == ValveState::error) || std::isnan(reading);
+    const bool error = (valve_state == Valve::State::error) || std::isnan(reading);
     const bool warm = reading >= desired + 0.5 * hysteresis;
     const bool cold = reading <= desired - 0.5 * hysteresis;
 
@@ -61,7 +61,7 @@ void Zone::tick() {
             } else if (cold) {
                 state = ZoneState::open_valve;
             } else {
-                state = (valve_state == ValveState::closed) ? ZoneState::off : ZoneState::close_valve;
+                state = (valve_state == Valve::State::closed) ? ZoneState::off : ZoneState::close_valve;
             }
             break;
 
@@ -72,7 +72,7 @@ void Zone::tick() {
             } else if (warm) {
                 state = ZoneState::close_valve;
             } else {
-                state = (valve_state == ValveState::open) ? ZoneState::on : ZoneState::open_valve;
+                state = (valve_state == Valve::State::open) ? ZoneState::on : ZoneState::open_valve;
             }
             break;
 
@@ -84,8 +84,8 @@ void Zone::tick() {
     metrics::zone_desired_temperature[ {{"zone", name}}].set(desired);
     metrics::zone_desired_temperature_hysteresis[ {{"zone", name}}].set(hysteresis);
     metrics::zone_actual_temperature[ {{"zone", name}}].set(reading);
-    metrics::zone_valve_state[ {{"zone", name}}].set(static_cast<typename std::underlying_type<ValveState>::type>
-            (ValveState(valve_state)));
+    metrics::zone_valve_state[ {{"zone", name}}].set(static_cast<typename std::underlying_type<Valve::State>::type>
+            (Valve::State(valve_state)));
 }
 
 bool Zone::boiler_desired_state() const {

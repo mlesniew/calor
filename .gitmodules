@@ -10,3 +10,6 @@
 [submodule "lib/esp-prometheus"]
 	path = lib/esp-prometheus
 	url = git@github.com:mlesniew/esp-prometheus.git
+[submodule "lib/valve"]
+	path = lib/valve
+	url = git@github.com:mlesniew/valve.git

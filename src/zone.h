@@ -8,7 +8,8 @@
 #include <utils/tickable.h>
 #include <utils/timedvalue.h>
 
-#include "valvestate.h"
+#include <valve.h>
+
 #include "zonestate.h"
 
 
@@ -31,7 +32,7 @@ class Zone: public Tickable {
         std::string name;
 
         TimedValue<double> reading;
-        TimedValue<ValveState> valve_state;
+        TimedValue<Valve::State> valve_state;
 
         double desired, hysteresis;
 

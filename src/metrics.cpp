@@ -6,8 +6,6 @@ Prometheus prometheus;
 
 PrometheusGauge heating_demand(prometheus, "heating_demand", "Burner heat demand state");
 
-PrometheusGauge valve_state(prometheus, "valve_state", "Valve state enum");
-
 PrometheusGauge zone_state(prometheus, "zone_state", "Zone state enum");
 PrometheusGauge zone_desired_temperature(prometheus, "zone_temperature_desired", "Zone's desired temperature");
 PrometheusGauge zone_desired_temperature_hysteresis(prometheus, "zone_temperature_desired_hysteresis",

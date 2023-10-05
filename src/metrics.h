@@ -9,8 +9,6 @@ extern Prometheus prometheus;
 
 extern PrometheusGauge heating_demand;
 
-extern PrometheusGauge valve_state;
-
 extern PrometheusGauge zone_state;
 extern PrometheusGauge zone_desired_temperature;
 extern PrometheusGauge zone_desired_temperature_hysteresis;

@@ -4,9 +4,9 @@
 #include <map>
 #include <string>
 
-#include "valvestate.h"
+#include <valve.h>
 
-std::map<std::string, ValveState> update_valvola(
+std::map<std::string, Valve::State> update_valvola(
     const std::string & address,
     const std::map<std::string, bool> desired);
 

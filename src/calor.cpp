@@ -15,13 +15,33 @@
 #include <utils/reset_button.h>
 #include <utils/stopwatch.h>
 #include <utils/wifi_control.h>
+#include <valve.h>
 
 #include "celsius.h"
 #include "metrics.h"
 #include "utils.h"
-#include "valve.h"
 #include "valvola.h"
 #include "zone.h"
+
+class CalorValve: public Valve {
+    public:
+        using Valve::Valve;
+
+        virtual ~CalorValve() {
+            gauge_valve_state.remove({{"zone", name}});
+        }
+
+    protected:
+        virtual void on_state_change() const {
+            gauge_valve_state[{{"zone", name}}]
+                .set(static_cast<typename std::underlying_type<State>::type>((State)state));
+        }
+
+    private:
+        static PrometheusGauge gauge_valve_state;
+};
+
+PrometheusGauge CalorValve::gauge_valve_state(metrics::prometheus, "valve_state", "Valve state enum");
 
 PinInput<D1, false> button;
 ResetButton reset_button(button);
@@ -35,7 +55,7 @@ WiFiControl wifi_control(wifi_led);
 std::vector<Zone> zones;
 std::set<std::string> celsius_addresses;
 std::set<std::string> valvola_addresses;
-Valve local_valve(valve_relay, "built-in valve");
+CalorValve local_valve(valve_relay, "built-in valve");
 
 ESP8266WebServer server(80);
 
