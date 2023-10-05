@@ -4,9 +4,7 @@
 #include <string>
 
 #include <ArduinoJson.h>
-
-#include <utils/tickable.h>
-#include <utils/timedvalue.h>
+#include <PicoUtils.h>
 
 #include <namedfsm.h>
 #include <valve.h>
@@ -24,7 +22,7 @@ enum class ZoneState {
     error = -1,
 };
 
-class Zone: public Tickable, public NamedFSM<ZoneState> {
+class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
     public:
         Zone(const char * name);
         virtual ~Zone() { delete_metric(); }
@@ -40,8 +38,8 @@ class Zone: public Tickable, public NamedFSM<ZoneState> {
         DynamicJsonDocument get_status() const;
         bool set_config(const JsonVariantConst & json);
 
-        TimedValue<double> reading;
-        TimedValue<ValveState> valve_state;
+        PicoUtils::TimedValue<double> reading;
+        PicoUtils::TimedValue<ValveState> valve_state;
 
         double desired, hysteresis;
 

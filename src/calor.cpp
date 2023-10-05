@@ -4,18 +4,14 @@
 
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <ESP8266WebServer.h>
 #include <uri/UriRegex.h>
 
 #include <ArduinoJson.h>
 #include <PicoMQTT.h>
+#include <PicoUtils.h>
+#include <WiFiManager.h>
 
-#include <utils/io.h>
-#include <utils/json_config.h>
-#include <utils/periodic_run.h>
-#include <utils/reset_button.h>
-#include <utils/stopwatch.h>
-#include <utils/wifi_control.h>
-#include <utils/rest.h>
 #include <valve.h>
 
 #include "celsius.h"
@@ -37,20 +33,20 @@ Prometheus & get_prometheus() {
 
 PrometheusGauge heating_demand(get_prometheus(), "heating_demand", "Burner heat demand state");
 
-PinInput<D1, false> button;
-ResetButton reset_button(button);
+PicoUtils::PinInput<D1, false> button;
+PicoUtils::ResetButton reset_button(button);
 
-PinOutput<D5, true> heating_relay;
-PinOutput<D6, true> valve_relay;
+PicoUtils::PinOutput<D5, true> heating_relay;
+PicoUtils::PinOutput<D6, true> valve_relay;
 
-PinOutput<D4, true> wifi_led;
-WiFiControl wifi_control(wifi_led);
+PicoUtils::PinOutput<D4, true> wifi_led;
+PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
 
 std::vector<Zone> zones;
 std::set<std::string> celsius_addresses;
 Valve local_valve(valve_relay, "built-in valve");
 
-RestfulWebServer server(80);
+PicoUtils::RestfulServer<ESP8266WebServer> server(80);
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
 
@@ -253,12 +249,12 @@ void setup() {
     delay(3000);
     reset_button.init();
 
-    wifi_control.init(button ? WiFiInitMode::setup : WiFiInitMode::saved, "calor");
+    wifi_control.init(button, "calor");
 
     LittleFS.begin();
 
     {
-        const auto config = JsonConfigFile(LittleFS, FPSTR(CONFIG_FILE), 1024);
+        const auto config = PicoUtils::JsonConfigFile<StaticJsonDocument<1024>>(LittleFS, FPSTR(CONFIG_FILE));
 
         for (JsonVariantConst v : config["celsius"].as<JsonArrayConst>()) {
             const auto addr = v.as<std::string>();
@@ -297,7 +293,7 @@ void setup() {
     get_mqtt().begin();
 }
 
-PeriodicRun celsius_proc(60, 5, [] {
+PicoUtils::PeriodicRun celsius_proc(60, 5, [] {
     for (const auto & address : celsius_addresses) {
         const auto readings = get_celsius_readings(address);
         for (const auto & kv : readings) {
@@ -312,7 +308,7 @@ PeriodicRun celsius_proc(60, 5, [] {
     }
 });
 
-PeriodicRun local_valve_proc(1, 0, [] {
+PicoUtils::PeriodicRun local_valve_proc(1, 0, [] {
     auto it = find_zone_by_name(local_valve.get_name());
     if (it == zones.end()) {
         local_valve.demand_open = false;
@@ -326,14 +322,14 @@ PeriodicRun local_valve_proc(1, 0, [] {
     it->valve_state = local_valve.get_state();
 });
 
-PeriodicRun update_mqtt_proc(30, 15, [] {
+PicoUtils::PeriodicRun update_mqtt_proc(30, 15, [] {
     for (const auto & zone : zones) {
         zone.update_mqtt();
     }
     local_valve.update_mqtt();
 });
 
-PeriodicRun heating_proc(1, 10, [] {
+PicoUtils::PeriodicRun heating_proc(1, 10, [] {
     bool boiler_on = false;
     printf("Checking %i zones...\n", zones.size());
 
