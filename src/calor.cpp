@@ -327,16 +327,17 @@ PicoUtils::PeriodicRun update_mqtt_proc(30, 15, [] {
     local_valve.update_mqtt();
 });
 
-PicoUtils::PeriodicRun heating_proc(1, 10, [] {
+PicoUtils::PeriodicRun heating_proc(5, 10, [] {
     bool boiler_on = false;
     printf("Checking %i zones...\n", zones.size());
 
     for (auto & zone : zones) {
         zone.tick();
         boiler_on = boiler_on || zone.boiler_desired_state();
-        printf("  %s:\t%s\treading %.2f ºC\tdesired %.2f ºC ± %.2f ºC\n",
+        printf("  %16s:\t%5s\treading %5.2f ºC\t(updated %4lu s ago)\tdesired %5.2f ºC ± %3.2f ºC\n",
                zone.get_name(), to_c_str(zone.get_state()),
-               (double) zone.reading, zone.desired, 0.5 * zone.hysteresis
+               (double) zone.reading, zone.reading.elapsed_millis() / 1000,
+               zone.desired, 0.5 * zone.hysteresis
               );
     };
 

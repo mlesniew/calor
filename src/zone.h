@@ -42,6 +42,7 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
         PicoUtils::TimedValue<ValveState> valve_state;
 
         std::string sensor;
+        bool read_only;
         double desired, hysteresis;
 
         void update_mqtt() const override;

@@ -20,7 +20,7 @@ PrometheusGauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zone's v
 Zone::Zone(const char * name)
     : NamedFSM(name, ZoneState::init),
       reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::error),
-      desired(21.0), hysteresis(0.5) {
+      read_only(false), desired(21.0), hysteresis(0.5) {
 }
 
 void Zone::copy_config_from(const Zone & zone) {
@@ -38,6 +38,16 @@ void Zone::tick() {
 
     if (reading_timeout) {
         reading = std::numeric_limits<double>::quiet_NaN();
+    }
+
+    if (read_only) {
+        desired = hysteresis = std::numeric_limits<double>::quiet_NaN();
+
+        if (get_state() != ZoneState::init || reading_timeout || !std::isnan(reading)) {
+            set_state(std::isnan(reading) ? ZoneState::error : ZoneState::off);
+        }
+
+        return;
     }
 
     // FSM inputs
@@ -101,6 +111,8 @@ DynamicJsonDocument Zone::get_config() const {
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
+    json["read_only"] = read_only;
+    json["sensor"] = sensor;
 
     return json;
 }
@@ -125,6 +137,7 @@ bool Zone::set_config(const JsonVariantConst & json) {
     sensor = obj["sensor"] | "";
     desired = obj["desired"] | 21;
     hysteresis = obj["hysteresis"] | 0.5;
+    read_only = obj["read_only"] | false;
 
     return true;
 }
@@ -138,9 +151,9 @@ const char * to_c_str(const ZoneState & s) {
         case ZoneState::off:
             return "wait";
         case ZoneState::open_valve:
-            return "open valve";
+            return "open";
         case ZoneState::close_valve:
-            return "close valve";
+            return "close";
         default:
             return "error";
     }
