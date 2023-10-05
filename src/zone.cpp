@@ -7,7 +7,7 @@
 
 Zone::Zone(const std::string & name)
     : name(name), reading(std::numeric_limits<double>::quiet_NaN()), valve_state(Valve::State::error),
-      desired(21.0), hysteresis(0.5), state(ZoneState::init) {
+      desired(21.0), hysteresis(0.5), state(State::init) {
 }
 
 Zone::~Zone() {
@@ -42,45 +42,45 @@ void Zone::tick() {
     const bool cold = reading <= desired - 0.5 * hysteresis;
 
     switch (state) {
-        case ZoneState::init:
+        case State::init:
             if (comms_timeout) {
-                state = ZoneState::error;
+                state = State::error;
             } else if (!error) {
-                state = ZoneState::off;
+                state = State::off;
             }
             break;
 
-        case ZoneState::error:
-            state = error ? ZoneState::error : ZoneState::off;
+        case State::error:
+            state = error ? State::error : State::off;
             break;
 
-        case ZoneState::off:
-        case ZoneState::close_valve:
+        case State::off:
+        case State::close_valve:
             if (error) {
-                state = ZoneState::error;
+                state = State::error;
             } else if (cold) {
-                state = ZoneState::open_valve;
+                state = State::open_valve;
             } else {
-                state = (valve_state == Valve::State::closed) ? ZoneState::off : ZoneState::close_valve;
+                state = (valve_state == Valve::State::closed) ? State::off : State::close_valve;
             }
             break;
 
-        case ZoneState::on:
-        case ZoneState::open_valve:
+        case State::on:
+        case State::open_valve:
             if (error) {
-                state = ZoneState::error;
+                state = State::error;
             } else if (warm) {
-                state = ZoneState::close_valve;
+                state = State::close_valve;
             } else {
-                state = (valve_state == Valve::State::open) ? ZoneState::on : ZoneState::open_valve;
+                state = (valve_state == Valve::State::open) ? State::on : State::open_valve;
             }
             break;
 
         default:
-            state = ZoneState::error;
+            state = State::error;
     }
 
-    metrics::zone_state[ {{"zone", name}}].set(static_cast<typename std::underlying_type<ZoneState>::type>(state));
+    metrics::zone_state[ {{"zone", name}}].set(static_cast<typename std::underlying_type<State>::type>(state));
     metrics::zone_desired_temperature[ {{"zone", name}}].set(desired);
     metrics::zone_desired_temperature_hysteresis[ {{"zone", name}}].set(hysteresis);
     metrics::zone_actual_temperature[ {{"zone", name}}].set(reading);
@@ -89,11 +89,11 @@ void Zone::tick() {
 }
 
 bool Zone::boiler_desired_state() const {
-    return (state == ZoneState::on);
+    return (state == State::on);
 }
 
 bool Zone::valve_desired_state() const {
-    return (state == ZoneState::on) || (state == ZoneState::open_valve);
+    return (state == State::on) || (state == State::open_valve);
 }
 
 DynamicJsonDocument Zone::get_config() const {
@@ -131,4 +131,21 @@ bool Zone::set_config(const JsonVariantConst & json) {
     }
 
     return true;
+}
+
+const char * to_c_str(const Zone::State & s) {
+    switch (s) {
+        case Zone::State::init:
+            return "init";
+        case Zone::State::on:
+            return "heat";
+        case Zone::State::off:
+            return "wait";
+        case Zone::State::open_valve:
+            return "open valve";
+        case Zone::State::close_valve:
+            return "close valve";
+        default:
+            return "error";
+    }
 }

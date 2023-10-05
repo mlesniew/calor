@@ -10,11 +10,17 @@
 
 #include <valve.h>
 
-#include "zonestate.h"
-
-
 class Zone: public Tickable {
     public:
+        enum class State {
+            init = 0,
+            off = 1,
+            on = 2,
+            open_valve = 3,
+            close_valve = 4,
+            error = -1,
+        };
+
         Zone(const std::string & name);
         ~Zone();
 
@@ -36,10 +42,12 @@ class Zone: public Tickable {
 
         double desired, hysteresis;
 
-        ZoneState get_state() const { return state; }
+        State get_state() const { return state; }
 
     protected:
-        ZoneState state;
+        State state;
 };
+
+const char * to_c_str(const Zone::State & s);
 
 #endif
