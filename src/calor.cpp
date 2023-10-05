@@ -25,12 +25,12 @@ PicoMQTT::Publisher & get_mqtt_publisher() {
     return get_mqtt();
 }
 
-Prometheus & get_prometheus() {
-    static Prometheus prometheus;
+PicoPrometheus::Registry & get_prometheus() {
+    static PicoPrometheus::Registry prometheus;
     return prometheus;
 }
 
-PrometheusGauge heating_demand(get_prometheus(), "heating_demand", "Burner heat demand state");
+PicoPrometheus::Gauge heating_demand(get_prometheus(), "heating_demand", "Burner heat demand state");
 
 PicoUtils::PinInput<D1, false> button;
 PicoUtils::ResetButton reset_button(button);

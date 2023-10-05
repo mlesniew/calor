@@ -54,6 +54,8 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
         void update_mqtt() const override;
         void update_metric() const override;
 
+        String unique_id() const;
+
     protected:
         std::map<String, unsigned long> reading_update_time_by_source;
         PicoUtils::TimedValue<double> reading;

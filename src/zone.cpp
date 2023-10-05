@@ -1,22 +1,26 @@
 #include <cmath>
 
 #include <ArduinoJson.h>
+#include <Hash.h>
 #include <PicoMQTT.h>
 
 #include "zone.h"
 
 PicoMQTT::Publisher & get_mqtt_publisher();
-Prometheus & get_prometheus();
+PicoPrometheus::Registry & get_prometheus();
 
 namespace {
-PrometheusGauge zone_state(get_prometheus(), "zone_state", "Zone state enum");
-PrometheusGauge zone_temperature_desired(get_prometheus(), "zone_temperature_desired", "Zone's desired temperature");
-PrometheusGauge zone_temperature_hysteresis(get_prometheus(), "zone_temperature_desired_hysteresis",
+PicoPrometheus::Gauge zone_state(get_prometheus(), "zone_state", "Zone state enum");
+PicoPrometheus::Gauge zone_temperature_desired(get_prometheus(), "zone_temperature_desired",
+        "Zone's desired temperature");
+PicoPrometheus::Gauge zone_temperature_hysteresis(get_prometheus(), "zone_temperature_desired_hysteresis",
         "Zone's desired temperature hysteresis");
-PrometheusGauge zone_temperature_reading(get_prometheus(), "zone_temperature_reading", "Zone's actual temperature");
-PrometheusGauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zone's valve state enum");
-PrometheusHistogram zone_temperature_reading_update_interval_seconds(get_prometheus(), "zone_temperature_reading_update_interval_seconds", "Zone temperature reading update interval in seconds", {1, 5, 10, 15, 30, 45, 60, 90, 120, 300});
-PrometheusGauge zone_sensor_rssi(get_prometheus(), "zone_sensor_rssi", "Zone's Sensor RSSI");
+PicoPrometheus::Gauge zone_temperature_reading(get_prometheus(), "zone_temperature_reading",
+        "Zone's actual temperature");
+PicoPrometheus::Gauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zone's valve state enum");
+PicoPrometheus::Histogram zone_temperature_reading_update_interval_seconds(get_prometheus(),
+        "zone_temperature_reading_update_interval_seconds", "Zone temperature reading update interval in seconds", {1, 5, 10, 15, 30, 45, 60, 90, 120, 300});
+PicoPrometheus::Gauge zone_sensor_rssi(get_prometheus(), "zone_sensor_rssi", "Zone's Sensor RSSI");
 }
 
 Zone::Zone(const char * name, const JsonVariantConst & json)
@@ -101,13 +105,15 @@ void Zone::tick() {
 
 void Zone::set_reading(double value) {
 
-    zone_temperature_reading_update_interval_seconds[get_prometheus_labels()].observe(get_seconds_since_last_reading_update());
+    zone_temperature_reading_update_interval_seconds[get_prometheus_labels()].observe(
+        get_seconds_since_last_reading_update());
     reading = value;
 }
 
 void Zone::update(const String & source, double temperature, double rssi) {
-    if (std::isnan(temperature))
+    if (std::isnan(temperature)) {
         return;
+    }
 
     auto labels = get_prometheus_labels();
     labels["source"] = source.c_str();
@@ -200,4 +206,10 @@ void Zone::update_metric() const {
     zone_temperature_reading[labels].set(reading);
     zone_valve_state[labels].set(static_cast<typename std::underlying_type<ValveState>::type>
                                  (ValveState(valve_state)));
+}
+
+
+String Zone::unique_id() const {
+    // TODO: Cache this?
+    return sha1(String(get_name())).substring(0, 7);
 }
