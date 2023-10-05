@@ -14,7 +14,6 @@
 
 #include <valve.h>
 
-#include "celsius.h"
 #include "zone.h"
 
 PicoMQTT::Server & get_mqtt() {
@@ -43,7 +42,6 @@ PicoUtils::PinOutput<D4, true> wifi_led;
 PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
 
 std::vector<Zone> zones;
-std::set<std::string> celsius_addresses;
 Valve local_valve(valve_relay, "built-in valve");
 
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
@@ -64,11 +62,6 @@ DynamicJsonDocument get_config() {
     auto zone_config = json["zones"].to<JsonObject>();
     for (const auto & zone : zones) {
         zone_config[zone.get_name()] = zone.get_config();
-    }
-
-    auto celsius_config = json["celsius"].to<JsonArray>();
-    for (const auto & address : celsius_addresses) {
-        celsius_config.add(address);
     }
 
     json["valve"] = local_valve.get_config();
@@ -102,25 +95,6 @@ void setup_server() {
         serializeJson(json, f);
         f.close();
         server.send(200);
-    });
-
-    server.on(UriRegex("/config/celsius/([^/]+)"), [] {
-        const std::string name = server.decodedPathArg(1).c_str();
-
-        switch (server.method()) {
-            case HTTP_POST:
-            case HTTP_PUT:
-                celsius_addresses.insert(name);
-                server.send(200);
-                return;
-            case HTTP_DELETE:
-                celsius_addresses.erase(name);
-                server.send(200);
-                return;
-            default:
-                server.send(405);
-                return;
-        }
     });
 
     server.on("/config/valve", [] {
@@ -256,13 +230,6 @@ void setup() {
     {
         const auto config = PicoUtils::JsonConfigFile<StaticJsonDocument<1024>>(LittleFS, FPSTR(CONFIG_FILE));
 
-        for (JsonVariantConst v : config["celsius"].as<JsonArrayConst>()) {
-            const auto addr = v.as<std::string>();
-            if (!addr.empty()) {
-                celsius_addresses.insert(addr);
-            }
-        }
-
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
             Zone zone(kv.key().c_str());
             zone.set_config(kv.value());
@@ -290,23 +257,24 @@ void setup() {
         }
     });
 
+    get_mqtt().subscribe("calor/+/+/temperature", [](const char * topic, const char * payload) {
+        const auto zone_name = PicoMQTT::Subscriber::get_topic_element(topic, 2);
+
+        if (!zone_name.length()) {
+            return;
+        }
+
+        const double temperature = atof(payload);
+
+        auto it = find_zone_by_name(zone_name.c_str());
+        if (it != zones.end()) {
+            Serial.printf("Temperature update for zone %s: %.2f ºC\n", zone_name.c_str(), temperature);
+            it->reading = temperature;
+        }
+    });
+
     get_mqtt().begin();
 }
-
-PicoUtils::PeriodicRun celsius_proc(60, 5, [] {
-    for (const auto & address : celsius_addresses) {
-        const auto readings = get_celsius_readings(address);
-        for (const auto & kv : readings) {
-            const auto & name = kv.first;
-            const double reading = kv.second;
-            printf("Temperature in %s = %.2f ºC\n", name.c_str(), reading);
-            auto it = find_zone_by_name(name);
-            if (it != zones.end()) {
-                it->reading = reading;
-            }
-        }
-    }
-});
 
 PicoUtils::PeriodicRun local_valve_proc(1, 0, [] {
     auto it = find_zone_by_name(local_valve.get_name());
@@ -350,7 +318,6 @@ PicoUtils::PeriodicRun heating_proc(1, 10, [] {
 void loop() {
     wifi_control.tick();
     server.handleClient();
-    celsius_proc.tick();
     heating_proc.tick();
     local_valve.tick();
     local_valve_proc.tick();
