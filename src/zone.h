@@ -24,10 +24,8 @@ enum class ZoneState {
 
 class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
     public:
-        Zone(const char * name);
+        Zone(const char * name, const JsonVariantConst & json);
         virtual ~Zone() { delete_metric(); }
-
-        void copy_config_from(const Zone & zone);
 
         void tick();
 
@@ -36,14 +34,15 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
 
         DynamicJsonDocument get_config() const;
         DynamicJsonDocument get_status() const;
-        bool set_config(const JsonVariantConst & json);
 
         PicoUtils::TimedValue<double> reading;
         PicoUtils::TimedValue<ValveState> valve_state;
 
-        std::string sensor;
-        bool read_only;
-        double desired, hysteresis;
+        const std::string sensor;
+        const bool read_only;
+        const double hysteresis;
+
+        double desired;
 
         void update_mqtt() const override;
         void update_metric() const override;

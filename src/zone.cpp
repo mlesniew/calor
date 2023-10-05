@@ -17,15 +17,14 @@ PrometheusGauge zone_actual_temperature(get_prometheus(), "zone_temperature_actu
 PrometheusGauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zone's valve state enum");
 }
 
-Zone::Zone(const char * name)
+Zone::Zone(const char * name, const JsonVariantConst & json)
     : NamedFSM(name, ZoneState::init),
-      reading(std::numeric_limits<double>::quiet_NaN()), valve_state(ValveState::error),
-      read_only(false), desired(21.0), hysteresis(0.5) {
-}
-
-void Zone::copy_config_from(const Zone & zone) {
-    desired = zone.desired;
-    hysteresis = zone.hysteresis;
+      reading(std::numeric_limits<double>::quiet_NaN()),
+      valve_state(ValveState::error),
+      sensor(json["sensor"] | ""),
+      read_only(json["read_only"] | false),
+      hysteresis(read_only ? std::numeric_limits<double>::quiet_NaN() : json["hysteresis"] | 0.5),
+      desired(read_only ? std::numeric_limits<double>::quiet_NaN() : json["desired"] | 21) {
 }
 
 void Zone::tick() {
@@ -41,7 +40,7 @@ void Zone::tick() {
     }
 
     if (read_only) {
-        desired = hysteresis = std::numeric_limits<double>::quiet_NaN();
+        desired = std::numeric_limits<double>::quiet_NaN();
 
         if (get_state() != ZoneState::init || reading_timeout || !std::isnan(reading)) {
             set_state(std::isnan(reading) ? ZoneState::error : ZoneState::off);
@@ -124,22 +123,6 @@ DynamicJsonDocument Zone::get_status() const {
     json["state"] = to_c_str(get_state());
 
     return json;
-}
-
-bool Zone::set_config(const JsonVariantConst & json) {
-    const auto obj = json.as<JsonObjectConst>();
-
-    if (obj.isNull()) {
-        return false;
-    }
-
-    // TODO: validate
-    sensor = obj["sensor"] | "";
-    desired = obj["desired"] | 21;
-    hysteresis = obj["hysteresis"] | 0.5;
-    read_only = obj["read_only"] | false;
-
-    return true;
 }
 
 const char * to_c_str(const ZoneState & s) {

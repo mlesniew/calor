@@ -93,109 +93,16 @@ void setup_server() {
         server.sendJson(get_config());
     });
 
-    server.on("/config/save", HTTP_POST, [] {
-        const auto json = get_config();
-        File f = LittleFS.open(FPSTR(CONFIG_FILE), "w");
-        if (!f) {
-            server.send(500);
-            return;
-        }
-        serializeJson(json, f);
-        f.close();
-        server.send(200);
-    });
-
-    server.on("/config/valve", [] {
-        switch (server.method()) {
-            case HTTP_PUT:
-            case HTTP_POST:
-            case HTTP_PATCH: {
-                StaticJsonDocument<128> json;
-
-                const auto error = deserializeJson(json, server.arg("plain"));
-                if (error) {
-                    server.send(400);
-                    return;
-                }
-
-                if (!local_valve.set_config(json.as<JsonVariant>())) {
-                    server.send(400);
-                    return;
-                }
-            }
-
-            // fall through
-            case HTTP_GET: {
-                server.sendJson(local_valve.get_config());
-                return;
-            }
-
-            default:
-                server.send(405);
-                return;
-        }
-    });
-
-    server.on(UriRegex("/zones/([^/]+)"), [] {
+    server.on(UriRegex("/zones/([^/]+)"), HTTP_GET, [] {
         const std::string name = server.decodedPathArg(0).c_str();
 
         auto it = find_zone_by_name(name);
 
-        // check for conflicts
-        const bool zone_exists = (it != zones.end());
-        const bool zone_should_exist = (
-            (server.method() == HTTP_GET) ||
-            (server.method() == HTTP_PUT) ||
-            (server.method() == HTTP_DELETE));
-
-        if (zone_exists && !zone_should_exist) {
-            server.send(409);
-            return;
-        } else if (!zone_exists && zone_should_exist) {
+        if (it == zones.end())
             server.send(404);
-            return;
+        else {
+            server.sendJson(it->get_status());
         }
-
-        // parse data if needed
-        const bool parse_upload = ((server.method() == HTTP_POST) || (server.method() == HTTP_PUT));
-        Zone parsed_zone(name.c_str());
-        if (parse_upload) {
-            StaticJsonDocument<64> json;
-            const auto error = deserializeJson(json, server.arg("plain"));
-
-            if (error) {
-                server.send(400);
-                return;
-            }
-
-            if (!parsed_zone.set_config(json.as<JsonVariant>())) {
-                server.send(400);
-                return;
-            }
-        }
-
-        // perform action
-        switch (server.method()) {
-            case HTTP_POST:
-                zones.push_back(parsed_zone);
-                it = zones.end() - 1;
-                break;
-            case HTTP_PUT:
-                it->copy_config_from(parsed_zone);
-                break;
-            case HTTP_DELETE:
-                zones.erase(it);
-                server.send(200);
-                return;
-            case HTTP_GET:
-                break;
-            default:
-                server.send(405);
-                return;
-        }
-
-        it->tick();
-        server.sendJson(it->get_status());
     });
 
     get_prometheus().labels["module"] = "calor";
@@ -239,8 +146,7 @@ void setup() {
         const auto config = PicoUtils::JsonConfigFile<StaticJsonDocument<1024>>(LittleFS, FPSTR(CONFIG_FILE));
 
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
-            Zone zone(kv.key().c_str());
-            zone.set_config(kv.value());
+            Zone zone(kv.key().c_str(), kv.value());
             zones.push_back(zone);
         }
 
