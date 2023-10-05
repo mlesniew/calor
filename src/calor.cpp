@@ -48,15 +48,15 @@ PicoUtils::RestfulServer<ESP8266WebServer> server(80);
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
 
-std::vector<Zone>::iterator find_zone_by_name(const std::string & name) {
+std::vector<Zone>::iterator find_zone_by_name(const String & name) {
     std::vector<Zone>::iterator it = zones.begin();
-    while (it != zones.end() && it->get_name() != name) {
+    while (it != zones.end() && name != it->get_name()) {
         ++it;
     }
     return it;
 }
 
-std::vector<Zone>::iterator find_zone_by_sensor(const std::string & sensor) {
+std::vector<Zone>::iterator find_zone_by_sensor(const String & sensor) {
     std::vector<Zone>::iterator it = zones.begin();
     while (it != zones.end() && it->sensor != sensor) {
         ++it;
@@ -94,7 +94,7 @@ void setup_server() {
     });
 
     server.on(UriRegex("/zones/([^/]+)"), HTTP_GET, [] {
-        const std::string name = server.decodedPathArg(0).c_str();
+        const String name = server.decodedPathArg(0).c_str();
 
         auto it = find_zone_by_name(name);
 
@@ -164,28 +164,37 @@ void setup() {
 
         const auto valve_state = parse_valve_state(payload);
 
-        auto it = find_zone_by_name(zone_name.c_str());
+        auto it = find_zone_by_name(zone_name);
         if (it != zones.end()) {
             Serial.printf("Valve state update for zone %s: %s\n", zone_name.c_str(), to_c_str(valve_state));
             it->valve_state = valve_state;
         }
     });
 
-    get_mqtt().subscribe("calor/+/+/temperature", [](const char * topic, const char * payload) {
-        const auto zone_name = PicoMQTT::Subscriber::get_topic_element(topic, 2);
+    get_mqtt().subscribe("celsius/+/+", [](const char * topic, Stream & stream) {
+        const auto sensor = PicoMQTT::Subscriber::get_topic_element(topic, 2);
 
-        if (!zone_name.length()) {
+        auto it = find_zone_by_sensor(sensor);
+        if (it == zones.end()) {
+            Serial.printf("Unrecognized sensor: %s\n", sensor.c_str());
+            return;
+        }
+
+        StaticJsonDocument<512> json;
+        if (deserializeJson(json, stream)) {
+            // error
+            return;
+        }
+
+        if (!json.containsKey("temperature")) {
             return;
         }
 
         const auto source = PicoMQTT::Subscriber::get_topic_element(topic, 1);
-        const double temperature = atof(payload);
+        const auto temperature = json["temperature"].as<double>();
 
-        auto it = find_zone_by_name(zone_name.c_str());
-        if (it != zones.end()) {
-            Serial.printf("Temperature update for zone %s: %.2f ºC\n", zone_name.c_str(), temperature);
-            it->update(source, temperature);
-        }
+        Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->get_name(), temperature);
+        it->update(source, temperature, json["rssi"].as<double>());
     });
 
     get_mqtt().subscribe("+/+/BTtoMQTT/+", [](const char * topic, Stream & stream) {

@@ -2,7 +2,6 @@
 #define ZONE_H
 
 #include <map>
-#include <string>
 
 #include <ArduinoJson.h>
 #include <PicoUtils.h>
@@ -45,7 +44,7 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
 
         PicoUtils::TimedValue<ValveState> valve_state;
 
-        const std::string sensor;
+        const String sensor;
         const bool read_only;
         const double hysteresis;
 
