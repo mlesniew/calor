@@ -154,7 +154,7 @@ bool Zone::valve_desired_state() const {
 }
 
 DynamicJsonDocument Zone::get_config() const {
-    DynamicJsonDocument json(64);
+    DynamicJsonDocument json(256);
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;

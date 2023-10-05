@@ -15,6 +15,7 @@
 
 #include <valve.h>
 
+#include "hass.h"
 #include "zone.h"
 
 PicoMQTT::Server & get_mqtt() {
@@ -45,6 +46,8 @@ PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
 std::vector<std::unique_ptr<Zone>> zones;
 Valve * local_valve = nullptr;
 
+String hass_autodiscovery_topic = "homeassistant";
+
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
@@ -67,6 +70,14 @@ DynamicJsonDocument get_config() {
     }
 
     json["valve"] = local_valve->get_config();
+
+    {
+        auto hass = json["hass"];
+        hass["server"] = HomeAssistant::mqtt.host;
+        hass["port"] = HomeAssistant::mqtt.port;
+        hass["username"] = HomeAssistant::mqtt.username;
+        hass["password"] = HomeAssistant::mqtt.password;
+    }
 
     return json;
 }
@@ -144,11 +155,21 @@ void setup() {
         }
 
         local_valve = new Valve(valve_relay, config["valve"]);
+
+        {
+            const auto hass = config["hass"];
+            HomeAssistant::mqtt.host = hass["server"] | "";
+            HomeAssistant::mqtt.port = hass["port"] | 1883;
+            HomeAssistant::mqtt.username = hass["username"] | "";
+            HomeAssistant::mqtt.password = hass["password"] | "";
+        }
     }
 
     setup_server();
 
     get_mqtt().begin();
+
+    HomeAssistant::init();
 }
 
 PicoUtils::PeriodicRun local_valve_proc(1, 0, [] {
@@ -192,4 +213,6 @@ void loop() {
         local_valve_proc.tick();
     }
     get_mqtt().loop();
+
+    HomeAssistant::tick();
 }
