@@ -25,6 +25,8 @@ enum class ZoneState {
 class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
     public:
         Zone(const char * name, const JsonVariantConst & json);
+        Zone(const Zone &) = delete;
+        Zone & operator=(const Zone &) = delete;
 
         void tick();
 
@@ -45,11 +47,13 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
 
         PicoUtils::TimedValue<ValveState> valve_state;
 
-        void update_mqtt() const override;
         String unique_id() const;
 
     protected:
+        void update_mqtt() const override;
         virtual const char * get_class_name() const override { return "Zone"; }
+
+        PicoUtils::PeriodicRun mqtt_updater;
 };
 
 const char * to_c_str(const ZoneState & s);

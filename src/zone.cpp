@@ -7,6 +7,8 @@
 #include "zone.h"
 
 PicoMQTT::Publisher & get_mqtt_publisher();
+PicoMQTT::Server & get_mqtt();
+
 PicoPrometheus::Registry & get_prometheus();
 
 namespace {
@@ -27,23 +29,55 @@ Zone::Zone(const char * name, const JsonVariantConst & json)
       hysteresis(read_only ? std::numeric_limits<double>::quiet_NaN() : json["hysteresis"] | 0.5),
       reading(std::numeric_limits<double>::quiet_NaN()),
       desired(read_only ? std::numeric_limits<double>::quiet_NaN() : json["desired"] | 21),
-      valve_state(ValveState::error) {
+      valve_state(ValveState::error),
+      mqtt_updater(30, 15, [this] { update_mqtt(); }) {
 
-    const auto labels = get_prometheus_labels();
-    zone_state[labels].bind([this] {
-        return static_cast<typename std::underlying_type<ZoneState>::type>(get_state());
-    });
-    zone_temperature_desired[labels].bind(desired);
-    zone_temperature_hysteresis[labels].bind(hysteresis);
-    zone_temperature_reading[labels].bind([this] {
-        return (double) reading;
-    });
-    zone_valve_state[labels].bind([this] {
-        return static_cast<typename std::underlying_type<ValveState>::type>(ValveState(valve_state));
+    // setup metrics
+    {
+        const auto labels = get_prometheus_labels();
+        zone_state[labels].bind([this] {
+            return static_cast<typename std::underlying_type<ZoneState>::type>(get_state());
+        });
+        zone_temperature_desired[labels].bind(desired);
+        zone_temperature_hysteresis[labels].bind(hysteresis);
+        zone_temperature_reading[labels].bind([this] {
+            return (double) reading;
+        });
+        zone_valve_state[labels].bind([this] {
+            return static_cast<typename std::underlying_type<ValveState>::type>(ValveState(valve_state));
+        });
+    }
+
+    // setup temperature subscriptions
+    if (sensor.length() != 0) {
+        const auto handler = [this](Stream & stream, const char * key) {
+            StaticJsonDocument<512> json;
+            if (deserializeJson(json, stream) || !json.containsKey(key)) {
+                return;
+            }
+            reading = json[key].as<double>();
+            Serial.printf("Temperature update for zone %s: %.2f ºC\n", this->name.c_str(), (double) reading);
+        };
+
+        String addr = sensor;
+        addr.toLowerCase();
+        get_mqtt().subscribe("celsius/+/" + addr, [handler](const char *, Stream & stream) { handler(stream, "temperature"); });
+
+        addr.toUpperCase();
+        addr.replace(":", "");
+        get_mqtt().subscribe("+/+/BTtoMQTT/" + addr, [handler](const char *, Stream & stream) { handler(stream, "tempc"); });
+    }
+
+    // setup valve subscriptions
+    get_mqtt().subscribe("valvola/valve/" + this->name, [this](const char * payload) {
+        valve_state = parse_valve_state(payload);
+        Serial.printf("Valve state update for zone %s: %s\n", this->name.c_str(), to_c_str(valve_state));
     });
 }
 
 void Zone::tick() {
+    mqtt_updater.tick();
+
     const bool reading_timeout = reading.elapsed_millis() >= 2 * 60 * 1000;
     const bool valve_timeout = valve_state.elapsed_millis() >= 2 * 60 * 1000;
 
@@ -157,14 +191,8 @@ const char * to_c_str(const ZoneState & s) {
 }
 
 void Zone::update_mqtt() const {
-    {
-        const auto topic = "valvola/valve/" + name + "/request";
-        get_mqtt_publisher().publish(topic, valve_desired_state() ? "open" : "closed");
-    }
-    {
-        const auto topic = "valvola/valve/" + name + "/state";
-        get_mqtt_publisher().publish(topic, to_c_str(get_state()));
-    }
+    const auto topic = "valvola/valve/" + name + "/request";
+    get_mqtt_publisher().publish(topic, valve_desired_state() ? "open" : "closed");
 }
 
 String Zone::unique_id() const {
