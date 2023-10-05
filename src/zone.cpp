@@ -22,12 +22,25 @@ PicoPrometheus::Gauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zo
 
 Zone::Zone(const char * name, const JsonVariantConst & json)
     : NamedFSM(name, ZoneState::init),
-      reading(std::numeric_limits<double>::quiet_NaN()),
-      valve_state(ValveState::error),
       sensor(json["sensor"] | ""),
       read_only(json["read_only"] | false),
       hysteresis(read_only ? std::numeric_limits<double>::quiet_NaN() : json["hysteresis"] | 0.5),
-      desired(read_only ? std::numeric_limits<double>::quiet_NaN() : json["desired"] | 21) {
+      reading(std::numeric_limits<double>::quiet_NaN()),
+      desired(read_only ? std::numeric_limits<double>::quiet_NaN() : json["desired"] | 21),
+      valve_state(ValveState::error) {
+
+    const auto labels = get_prometheus_labels();
+    zone_state[labels].bind([this] {
+        return static_cast<typename std::underlying_type<ZoneState>::type>(get_state());
+    });
+    zone_temperature_desired[labels].bind(desired);
+    zone_temperature_hysteresis[labels].bind(hysteresis);
+    zone_temperature_reading[labels].bind([this] {
+        return (double) reading;
+    });
+    zone_valve_state[labels].bind([this] {
+        return static_cast<typename std::underlying_type<ValveState>::type>(ValveState(valve_state));
+    });
 }
 
 void Zone::tick() {
@@ -96,8 +109,6 @@ void Zone::tick() {
         default:
             set_state(ZoneState::error);
     }
-
-    update_metric();
 }
 
 bool Zone::boiler_desired_state() const {
@@ -147,36 +158,16 @@ const char * to_c_str(const ZoneState & s) {
 
 void Zone::update_mqtt() const {
     {
-        const std::string topic = std::string("valvola/valve/") + get_name() + "/request";
-        get_mqtt_publisher().publish(topic.c_str(), valve_desired_state() ? "open" : "closed");
+        const auto topic = "valvola/valve/" + name + "/request";
+        get_mqtt_publisher().publish(topic, valve_desired_state() ? "open" : "closed");
     }
     {
-        const std::string topic = std::string("valvola/valve/") + get_name() + "/state";
-        get_mqtt_publisher().publish(topic.c_str(), to_c_str(get_state()));
+        const auto topic = "valvola/valve/" + name + "/state";
+        get_mqtt_publisher().publish(topic, to_c_str(get_state()));
     }
 }
-
-void Zone::delete_metric() const {
-    const auto labels = get_prometheus_labels();
-    zone_state.remove(labels, false);
-    zone_temperature_desired.remove(labels, false);
-    zone_temperature_hysteresis.remove(labels, false);
-    zone_temperature_reading.remove(labels, false);
-    zone_valve_state.remove(labels, false);
-}
-
-void Zone::update_metric() const {
-    const auto labels = get_prometheus_labels();
-    zone_state[labels].set(static_cast<typename std::underlying_type<ZoneState>::type>(get_state()));
-    zone_temperature_desired[labels].set(desired);
-    zone_temperature_hysteresis[labels].set(hysteresis);
-    zone_temperature_reading[labels].set(reading);
-    zone_valve_state[labels].set(static_cast<typename std::underlying_type<ValveState>::type>
-                                 (ValveState(valve_state)));
-}
-
 
 String Zone::unique_id() const {
     // TODO: Cache this?
-    return sha1(String(get_name())).substring(0, 7);
+    return sha1(String(name)).substring(0, 7);
 }

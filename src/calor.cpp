@@ -42,7 +42,7 @@ PicoUtils::PinOutput<D4, true> wifi_led;
 PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
 
 std::vector<Zone> zones;
-Valve local_valve(valve_relay, "built-in valve");
+Valve * local_valve = nullptr;
 
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
 
@@ -50,7 +50,7 @@ const char CONFIG_FILE[] PROGMEM = "/config.json";
 
 std::vector<Zone>::iterator find_zone_by_name(const String & name) {
     std::vector<Zone>::iterator it = zones.begin();
-    while (it != zones.end() && name != it->get_name()) {
+    while (it != zones.end() && name != it->name) {
         ++it;
     }
     return it;
@@ -69,10 +69,10 @@ DynamicJsonDocument get_config() {
 
     auto zone_config = json["zones"].to<JsonObject>();
     for (const auto & zone : zones) {
-        zone_config[zone.get_name()] = zone.get_config();
+        zone_config[zone.name] = zone.get_config();
     }
 
-    json["valve"] = local_valve.get_config();
+    json["valve"] = local_valve->get_config();
 
     return json;
 }
@@ -83,7 +83,7 @@ void setup_server() {
         StaticJsonDocument<1024> json;
 
         for (const auto & zone : zones) {
-            json[zone.get_name()] = zone.get_status();
+            json[zone.name] = zone.get_status();
         }
 
         server.sendJson(json);
@@ -150,7 +150,7 @@ void setup() {
             zones.push_back(zone);
         }
 
-        local_valve.set_config(config["valve"]);
+        local_valve = new Valve(valve_relay, config["valve"]);
     }
 
     setup_server();
@@ -193,7 +193,7 @@ void setup() {
         const auto source = PicoMQTT::Subscriber::get_topic_element(topic, 1);
         const auto temperature = json["temperature"].as<double>();
 
-        Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->get_name(), temperature);
+        Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->name.c_str(), temperature);
         it->reading = temperature;
     });
 
@@ -216,7 +216,7 @@ void setup() {
 
         auto it = find_zone_by_sensor(sensor);
         if (it != zones.end()) {
-            Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->get_name(), temperature);
+            Serial.printf("Temperature update for zone %s: %.2f ºC\n", it->name.c_str(), temperature);
             it->reading = temperature;
         }
     });
@@ -225,24 +225,24 @@ void setup() {
 }
 
 PicoUtils::PeriodicRun local_valve_proc(1, 0, [] {
-    auto it = find_zone_by_name(local_valve.get_name());
+    auto it = find_zone_by_name(local_valve->name);
     if (it == zones.end()) {
-        local_valve.demand_open = false;
-        local_valve.tick();
+        local_valve->demand_open = false;
+        local_valve->tick();
         return;
     }
 
-    local_valve.demand_open = it->valve_desired_state();
-    local_valve.tick();
+    local_valve->demand_open = it->valve_desired_state();
+    local_valve->tick();
 
-    it->valve_state = local_valve.get_state();
+    it->valve_state = local_valve->get_state();
 });
 
 PicoUtils::PeriodicRun update_mqtt_proc(30, 15, [] {
     for (const auto & zone : zones) {
         zone.update_mqtt();
     }
-    local_valve.update_mqtt();
+    local_valve->update_mqtt();
 });
 
 PicoUtils::PeriodicRun heating_proc(5, 10, [] {
@@ -253,7 +253,7 @@ PicoUtils::PeriodicRun heating_proc(5, 10, [] {
         zone.tick();
         boiler_on = boiler_on || zone.boiler_desired_state();
         printf("  %16s:\t%5s\treading %5.2f ºC\t(updated %4lu s ago)\tdesired %5.2f ºC ± %3.2f ºC\n",
-               zone.get_name(), to_c_str(zone.get_state()),
+               zone.name.c_str(), to_c_str(zone.get_state()),
                (double) zone.reading, zone.get_seconds_since_last_reading_update(),
                zone.desired, 0.5 * zone.hysteresis
               );
@@ -268,7 +268,7 @@ void loop() {
     wifi_control.tick();
     server.handleClient();
     heating_proc.tick();
-    local_valve.tick();
+    local_valve->tick();
     local_valve_proc.tick();
     get_mqtt().loop();
     update_mqtt_proc.tick();

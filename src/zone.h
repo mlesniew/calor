@@ -25,7 +25,6 @@ enum class ZoneState {
 class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
     public:
         Zone(const char * name, const JsonVariantConst & json);
-        virtual ~Zone() { delete_metric(); }
 
         void tick();
 
@@ -37,26 +36,20 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
 
         unsigned long get_seconds_since_last_reading_update() const { return reading.elapsed_millis() / 1000; }
 
-        PicoUtils::TimedValue<ValveState> valve_state;
-
         const String sensor;
         const bool read_only;
         const double hysteresis;
 
+        PicoUtils::TimedValue<double> reading;
         double desired;
 
+        PicoUtils::TimedValue<ValveState> valve_state;
+
         void update_mqtt() const override;
-        void update_metric() const override;
-
         String unique_id() const;
-
-        PicoUtils::TimedValue<double> reading;
 
     protected:
         virtual const char * get_class_name() const override { return "Zone"; }
-
-        void delete_metric() const override;
-
 };
 
 const char * to_c_str(const ZoneState & s);
