@@ -1,15 +1,6 @@
 [submodule "lib/arduino_utils"]
 	path = lib/arduino_utils
 	url = git@github.com:mlesniew/arduino_utils.git
-[submodule "lib/WiFiManager"]
-	path = lib/WiFiManager
-	url = https://github.com/tzapu/WiFiManager.git
-[submodule "lib/ArduinoJson"]
-	path = lib/ArduinoJson
-	url = https://github.com/bblanchon/ArduinoJson.git
-[submodule "lib/esp-prometheus"]
-	path = lib/esp-prometheus
-	url = git@github.com:mlesniew/esp-prometheus.git
 [submodule "lib/valve"]
 	path = lib/valve
 	url = git@github.com:mlesniew/valve.git

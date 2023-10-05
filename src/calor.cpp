@@ -8,6 +8,7 @@
 #include <uri/UriRegex.h>
 
 #include <ArduinoJson.h>
+#include <PicoMQTT.h>
 
 #include <utils/io.h>
 #include <utils/json_config.h>
@@ -18,30 +19,24 @@
 #include <valve.h>
 
 #include "celsius.h"
-#include "metrics.h"
 #include "utils.h"
-#include "valvola.h"
 #include "zone.h"
 
-class CalorValve: public Valve {
-    public:
-        using Valve::Valve;
+PicoMQTT::Server & get_mqtt() {
+    static PicoMQTT::Server mqtt;
+    return mqtt;
+}
 
-        virtual ~CalorValve() {
-            gauge_valve_state.remove({{"zone", name}});
-        }
+PicoMQTT::Publisher & get_mqtt_publisher() {
+    return get_mqtt();
+}
 
-    protected:
-        virtual void on_state_change() const {
-            gauge_valve_state[{{"zone", name}}]
-                .set(static_cast<typename std::underlying_type<State>::type>((State)state));
-        }
+Prometheus & get_prometheus() {
+    static Prometheus prometheus;
+    return prometheus;
+}
 
-    private:
-        static PrometheusGauge gauge_valve_state;
-};
-
-PrometheusGauge CalorValve::gauge_valve_state(metrics::prometheus, "valve_state", "Valve state enum");
+PrometheusGauge heating_demand(get_prometheus(), "heating_demand", "Burner heat demand state");
 
 PinInput<D1, false> button;
 ResetButton reset_button(button);
@@ -54,8 +49,7 @@ WiFiControl wifi_control(wifi_led);
 
 std::vector<Zone> zones;
 std::set<std::string> celsius_addresses;
-std::set<std::string> valvola_addresses;
-CalorValve local_valve(valve_relay, "built-in valve");
+Valve local_valve(valve_relay, "built-in valve");
 
 ESP8266WebServer server(80);
 
@@ -69,7 +63,7 @@ void return_json(const JsonDocument & json, unsigned int code = 200) {
 
 std::vector<Zone>::iterator find_zone_by_name(const std::string & name) {
     std::vector<Zone>::iterator it = zones.begin();
-    while (it != zones.end() && it->name != name) {
+    while (it != zones.end() && it->get_name() != name) {
         ++it;
     }
     return it;
@@ -80,12 +74,7 @@ DynamicJsonDocument get_config() {
 
     auto zone_config = json["zones"].to<JsonObject>();
     for (const auto & zone : zones) {
-        zone_config[zone.name] = zone.get_config();
-    }
-
-    auto valvola_config = json["valvola"].to<JsonArray>();
-    for (const auto & address : valvola_addresses) {
-        valvola_config.add(address);
+        zone_config[zone.get_name()] = zone.get_config();
     }
 
     auto celsius_config = json["celsius"].to<JsonArray>();
@@ -104,7 +93,7 @@ void setup_server() {
         StaticJsonDocument<1024> json;
 
         for (const auto & zone : zones) {
-            json[zone.name] = zone.get_status();
+            json[zone.get_name()] = zone.get_status();
         }
 
         return_json(json);
@@ -126,18 +115,17 @@ void setup_server() {
         server.send(200);
     });
 
-    server.on(UriRegex("/config/(celsius|valvola)/([^/]+)"), [] {
-        std::set<std::string> & addresses = server.pathArg(0).c_str()[0] == 'c' ? celsius_addresses : valvola_addresses;
+    server.on(UriRegex("/config/celsius/([^/]+)"), [] {
         const std::string name = uri_unquote(server.pathArg(1).c_str());
 
         switch (server.method()) {
             case HTTP_POST:
             case HTTP_PUT:
-                addresses.insert(name);
+                celsius_addresses.insert(name);
                 server.send(200);
                 return;
             case HTTP_DELETE:
-                addresses.erase(name);
+                celsius_addresses.erase(name);
                 server.send(200);
                 return;
             default:
@@ -199,7 +187,7 @@ void setup_server() {
 
         // parse data if needed
         const bool parse_upload = ((server.method() == HTTP_POST) || (server.method() == HTTP_PUT));
-        Zone parsed_zone(name);
+        Zone parsed_zone(name.c_str());
         if (parse_upload) {
             StaticJsonDocument<64> json;
             const auto error = deserializeJson(json, server.arg("plain"));
@@ -239,9 +227,9 @@ void setup_server() {
         return_json(it->get_status());
     });
 
-    metrics::prometheus.labels["module"] = "calor";
+    get_prometheus().labels["module"] = "calor";
 
-    metrics::prometheus.register_metrics_endpoint(server);
+    get_prometheus().register_metrics_endpoint(server);
 
     server.begin();
 }
@@ -286,13 +274,6 @@ void setup() {
             }
         }
 
-        for (JsonVariantConst v : config["valvola"].as<JsonArrayConst>()) {
-            const auto addr = v.as<std::string>();
-            if (!addr.empty()) {
-                valvola_addresses.insert(addr);
-            }
-        }
-
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
             Zone zone(kv.key().c_str());
             zone.set_config(kv.value());
@@ -303,6 +284,24 @@ void setup() {
     }
 
     setup_server();
+
+    get_mqtt().subscribe("valvola/valve/+", [](const char * topic, const char * payload) {
+        const auto zone_name = PicoMQTT::Subscriber::get_topic_element(topic, 2);
+
+        if (!zone_name.length()) {
+            return;
+        }
+
+        const auto valve_state = parse_valve_state(payload);
+
+        auto it = find_zone_by_name(zone_name.c_str());
+        if (it != zones.end()) {
+            Serial.printf("Valve state update for zone %s: %s\n", zone_name.c_str(), to_c_str(valve_state));
+            it->valve_state = valve_state;
+        }
+    });
+
+    get_mqtt().begin();
 }
 
 PeriodicRun celsius_proc(60, 5, [] {
@@ -321,7 +320,7 @@ PeriodicRun celsius_proc(60, 5, [] {
 });
 
 PeriodicRun local_valve_proc(1, 0, [] {
-    auto it = find_zone_by_name(local_valve.name);
+    auto it = find_zone_by_name(local_valve.get_name());
     if (it == zones.end()) {
         local_valve.demand_open = false;
         local_valve.tick();
@@ -334,25 +333,11 @@ PeriodicRun local_valve_proc(1, 0, [] {
     it->valve_state = local_valve.get_state();
 });
 
-PeriodicRun valvola_proc(60, 5, [] {
-    for (const auto & address : valvola_addresses) {
-        std::map<std::string, bool> desired_valve_states;
-        for (const auto & zone : zones) {
-            desired_valve_states[zone.name] = zone.valve_desired_state();
-        }
-
-        const auto valve_states = update_valvola(address, desired_valve_states);
-
-        for (const auto & kv : valve_states) {
-            const auto & name = kv.first;
-            const auto state = kv.second;
-            printf("Valve state %s = %s\n", name.c_str(), to_c_str(state));
-            auto it = find_zone_by_name(name);
-            if (it != zones.end()) {
-                it->valve_state = state;
-            }
-        }
+PeriodicRun update_mqtt_proc(30, 15, [] {
+    for (const auto & zone : zones) {
+        zone.update_mqtt();
     }
+    local_valve.update_mqtt();
 });
 
 PeriodicRun heating_proc(1, 10, [] {
@@ -363,22 +348,23 @@ PeriodicRun heating_proc(1, 10, [] {
         zone.tick();
         boiler_on = boiler_on || zone.boiler_desired_state();
         printf("  %s:\t%s\treading %.2f ºC\tdesired %.2f ºC ± %.2f ºC\n",
-               zone.name.c_str(), to_c_str(zone.get_state()),
+               zone.get_name(), to_c_str(zone.get_state()),
                (double) zone.reading, zone.desired, 0.5 * zone.hysteresis
               );
     };
 
     printf("Zone processing complete, heating: %s\n", boiler_on ? "ON" : "OFF");
     heating_relay.set(boiler_on);
-    metrics::heating_demand.set(boiler_on);
+    heating_demand.set(boiler_on);
 });
 
 void loop() {
-    server.handleClient();
     wifi_control.tick();
+    server.handleClient();
     celsius_proc.tick();
     heating_proc.tick();
-    valvola_proc.tick();
     local_valve.tick();
     local_valve_proc.tick();
+    get_mqtt().loop();
+    update_mqtt_proc.tick();
 }

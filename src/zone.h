@@ -8,21 +8,26 @@
 #include <utils/tickable.h>
 #include <utils/timedvalue.h>
 
+#include <namedfsm.h>
 #include <valve.h>
 
-class Zone: public Tickable {
-    public:
-        enum class State {
-            init = 0,
-            off = 1,
-            on = 2,
-            open_valve = 3,
-            close_valve = 4,
-            error = -1,
-        };
+namespace PicoMQTT {
+class Publisher;
+};
 
-        Zone(const std::string & name);
-        ~Zone();
+enum class ZoneState {
+    init = 0,
+    off = 1,
+    on = 2,
+    open_valve = 3,
+    close_valve = 4,
+    error = -1,
+};
+
+class Zone: public Tickable, public NamedFSM<ZoneState> {
+    public:
+        Zone(const char * name);
+        virtual ~Zone() { delete_metric(); }
 
         void copy_config_from(const Zone & zone);
 
@@ -35,19 +40,21 @@ class Zone: public Tickable {
         DynamicJsonDocument get_status() const;
         bool set_config(const JsonVariantConst & json);
 
-        std::string name;
-
         TimedValue<double> reading;
-        TimedValue<Valve::State> valve_state;
+        TimedValue<ValveState> valve_state;
 
         double desired, hysteresis;
 
-        State get_state() const { return state; }
+        void update_mqtt() const override;
+        void update_metric() const override;
 
     protected:
-        State state;
+        virtual const char * get_class_name() const override { return "Zone"; }
+
+        void delete_metric() const override;
+
 };
 
-const char * to_c_str(const Zone::State & s);
+const char * to_c_str(const ZoneState & s);
 
 #endif

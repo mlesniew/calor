@@ -45,7 +45,7 @@ std::map<std::string, double> get_celsius_readings(const std::string & ip) {
     http.useHTTP10(true);
 
     // increase timeout
-    client.setTimeout(10000);
+    http.setTimeout(10000);
 
     if (!http.begin(client, uri.c_str())) {
         Serial.println(F("error connecting"));
@@ -58,6 +58,6 @@ std::map<std::string, double> get_celsius_readings(const std::string & ip) {
         return {};
     }
 
-    return parse_celsius_response(client);
+    return parse_celsius_response(http.getStream());
     // NOTE: there's no need to call http.end() if we don't plan to reuse the object
 }
