@@ -43,6 +43,12 @@ void notify_action(const Zone & zone) {
                  0, true);
 }
 
+void notify_health() {
+    mqtt.publish("calor/" + board_id + "/problem",
+                 !healthy ? "ON" : "OFF",
+                 0, true);
+}
+
 void autodiscovery() {
     if (hass_autodiscovery_topic.length() == 0) {
         syslog.println("Home Assistant autodiscovery disabled.");
@@ -85,6 +91,31 @@ void autodiscovery() {
         device["via_device"] = board_unique_id;
 
         const String disco_topic = hass_autodiscovery_topic + "/climate/" + unique_id + "/config";
+        auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
+        serializeJson(json, publish);
+        publish.send();
+    }
+
+    {
+        const auto unique_id = board_unique_id + "-problem";
+        StaticJsonDocument<1024> json;
+        json["unique_id"] = unique_id;
+        json["object_id"] = "calor_problem";
+        json["name"] = "Calor problem";
+        json["device_class"] = "problem";
+        json["entity_category"] = "diagnostic";
+        json["availability_topic"] = mqtt.will.topic;
+        json["state_topic"] = "calor/" + board_id + "/problem";
+
+        auto device = json["device"];
+        device["name"] = "Calor";
+        device["identifiers"][0] = board_unique_id;
+        device["configuration_url"] = "http://" + WiFi.localIP().toString();
+        device["manufacturer"] = "mlesniew";
+        device["model"] = "Calor";
+        device["sw_version"] = __DATE__ " " __TIME__;
+
+        const String disco_topic = hass_autodiscovery_topic + "/binary_sensor/" + unique_id + "/config";
         auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
         serializeJson(json, publish);
         publish.send();
@@ -139,6 +170,12 @@ void init() {
                 [&zone] { return zone.get_state() == ZoneState::on; },
                 [&zone] { notify_action(zone); }));
     }
+
+    watches.push_back(
+        new PicoUtils::Watch<bool>(
+            [] { return healthy; },
+            notify_health
+        ));
 }
 
 

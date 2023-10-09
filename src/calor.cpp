@@ -88,9 +88,9 @@ DynamicJsonDocument get_config() {
 }
 
 bool healthy = false;
-PicoPrometheus::Gauge health_gauge(get_prometheus(), "health", "Board healthcheck", []{ return healthy ? 1 : 0; });
+PicoPrometheus::Gauge health_gauge(get_prometheus(), "health", "Board healthcheck", [] { return healthy ? 1 : 0; });
 
-PicoUtils::PeriodicRun healthcheck(5, []{
+PicoUtils::PeriodicRun healthcheck(5, [] {
     static PicoUtils::Stopwatch last_healthy;
 
     healthy = (WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck();
@@ -212,7 +212,7 @@ void setup() {
         watch_2->fire();
         tickables.push_back(watch_2);
 
-        tickables.push_back(new PicoUtils::PeriodicRun(10, [zone]{ zone->valve_state = local_valve->get_state(); }));
+        tickables.push_back(new PicoUtils::PeriodicRun(10, [zone] { zone->valve_state = local_valve->get_state(); }));
     } else {
         local_valve->demand_open = false;
     }
