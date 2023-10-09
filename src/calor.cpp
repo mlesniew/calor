@@ -1,4 +1,3 @@
-#include <memory>
 #include <vector>
 #include <set>
 #include <string>
@@ -43,8 +42,10 @@ PicoUtils::PinOutput<D6, true> valve_relay;
 PicoUtils::PinOutput<D4, true> wifi_led;
 PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
 
-std::vector<std::unique_ptr<Zone>> zones;
-Valve * local_valve = nullptr;
+std::vector<Zone *> zones;
+Valve * local_valve;
+
+std::vector<PicoUtils::Tickable *> tickables;
 
 String hass_autodiscovery_topic = "homeassistant";
 
@@ -55,7 +56,7 @@ const char CONFIG_FILE[] PROGMEM = "/config.json";
 Zone * find_zone_by_name(const String & name) {
     for (auto & zone_ptr : zones) {
         if (name == zone_ptr->name) {
-            return zone_ptr.get();
+            return zone_ptr;
         }
     }
     return nullptr;
@@ -151,10 +152,13 @@ void setup() {
         const auto config = PicoUtils::JsonConfigFile<StaticJsonDocument<1024>>(LittleFS, FPSTR(CONFIG_FILE));
 
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
-            zones.push_back(std::unique_ptr<Zone>(new Zone(kv.key().c_str(), kv.value())));
+            Zone * zone = new Zone(kv.key().c_str(), kv.value());
+            zones.push_back(zone);
+            tickables.push_back(zone);
         }
 
         local_valve = new Valve(valve_relay, config["valve"]);
+        tickables.push_back(local_valve);
 
         {
             const auto hass = config["hass"];
@@ -165,54 +169,52 @@ void setup() {
         }
     }
 
-    setup_server();
-
-    get_mqtt().begin();
-
-    HomeAssistant::init();
-}
-
-PicoUtils::PeriodicRun local_valve_proc(1, 0, [] {
     Zone * zone = find_zone_by_name(local_valve->name);
-    if (!zone) {
+    if (zone) {
+        // bind zone desired valve state to local valve
+        auto * watch_1 = new PicoUtils::Watch<bool>(
+            [zone] { return zone->valve_desired_state(); },
+        [zone](bool demand) { local_valve->demand_open = demand; });
+
+        watch_1->fire();
+        tickables.push_back(watch_1);
+
+        auto * watch_2 = new PicoUtils::Watch<ValveState>(
+            [] { return local_valve->get_state(); },
+        [zone](ValveState state) { zone->valve_state = state; });
+
+        watch_2->fire();
+        tickables.push_back(watch_2);
+    } else {
         local_valve->demand_open = false;
-        local_valve->tick();
-        return;
     }
 
-    local_valve->demand_open = zone->valve_desired_state();
-    local_valve->tick();
-    zone->valve_state = local_valve->get_state();
-});
+    tickables.push_back(new PicoUtils::Watch<bool>(
+    [] {
+        for (auto & zone : zones) {
+            if (zone->boiler_desired_state()) {
+                return true;
+            }
+        }
+        return false;
+    },
+    [](bool demand) {
+        Serial.printf("Turning boiler %s.\n", demand ? "on" : "off");
+        heating_relay.set(demand);
+        heating_demand.set(demand);
+    }));
 
-PicoUtils::PeriodicRun heating_proc(5, 10, [] {
-    bool boiler_on = false;
-    printf("Checking %i zones...\n", zones.size());
-
-    for (auto & zone : zones) {
-        boiler_on = boiler_on || zone->boiler_desired_state();
-        printf("  %16s:\t%5s\treading %5.2f ºC\t(updated %4lu s ago)\tdesired %5.2f ºC ± %3.2f ºC\n",
-               zone->name.c_str(), to_c_str(zone->get_state()),
-               (double) zone->reading, zone->get_seconds_since_last_reading_update(),
-               zone->desired, 0.5 * zone->hysteresis
-              );
-    };
-    printf("Zone processing complete, heating: %s\n", boiler_on ? "ON" : "OFF");
-
-    heating_relay.set(boiler_on);
-    heating_demand.set(boiler_on);
-});
+    setup_server();
+    get_mqtt().begin();
+    HomeAssistant::init();
+}
 
 void loop() {
     wifi_control.tick();
     server.handleClient();
-    {
-        for (auto & zone : zones) { zone->tick(); }
-        heating_proc.tick();
-        local_valve->tick();
-        local_valve_proc.tick();
-    }
     get_mqtt().loop();
+
+    for (auto & tickable : tickables) { tickable->tick(); }
 
     HomeAssistant::tick();
 }

@@ -1,4 +1,3 @@
-#include <memory>
 #include <vector>
 
 #include <Arduino.h>
@@ -8,7 +7,7 @@
 #include "hass.h"
 #include "zone.h"
 
-extern std::vector<std::unique_ptr<Zone>> zones;
+extern std::vector<Zone *> zones;
 extern String hass_autodiscovery_topic;
 
 namespace {
@@ -146,9 +145,9 @@ void init() {
 
 void tick() {
     mqtt.loop();
-    for (const auto & watch : current_temperature_watches) { watch.tick(); }
-    for (const auto & watch : desired_temperature_watches) { watch.tick(); }
-    for (const auto & watch : action_watches) { watch.tick(); }
+    for (auto & watch : current_temperature_watches) { watch.tick(); }
+    for (auto & watch : desired_temperature_watches) { watch.tick(); }
+    for (auto & watch : action_watches) { watch.tick(); }
 }
 
 }
