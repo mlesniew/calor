@@ -1,12 +1,14 @@
 #include <vector>
 
 #include <Arduino.h>
+#include <PicoSyslog.h>
 #include <PicoUtils.h>
 #include <ArduinoJson.h>
 
 #include "hass.h"
 #include "zone.h"
 
+extern PicoSyslog::Logger syslog;
 extern std::vector<Zone *> zones;
 extern String hass_autodiscovery_topic;
 
@@ -44,11 +46,11 @@ void notify_action(const Zone & zone) {
 
 void autodiscovery() {
     if (hass_autodiscovery_topic.length() == 0) {
-        Serial.println("Home Assistant autodiscovery disabled.");
+        syslog.println("Home Assistant autodiscovery disabled.");
         return;
     }
 
-    Serial.println("Sending Home Assistant autodiscovery messages...");
+    syslog.println("Sending Home Assistant autodiscovery messages...");
 
     const String board_unique_id = "calor-" + board_id;
 

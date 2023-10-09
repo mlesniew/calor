@@ -9,6 +9,7 @@
 
 #include <ArduinoJson.h>
 #include <PicoMQTT.h>
+#include <PicoSyslog.h>
 #include <PicoUtils.h>
 #include <WiFiManager.h>
 
@@ -33,6 +34,7 @@ PicoPrometheus::Registry & get_prometheus() {
 
 PicoPrometheus::Gauge heating_demand(get_prometheus(), "heating_demand", "Burner heat demand state");
 
+PicoSyslog::Logger syslog("calor");
 PicoUtils::PinInput<D1, false> button;
 PicoUtils::ResetButton reset_button(button);
 
@@ -80,6 +82,8 @@ DynamicJsonDocument get_config() {
         hass["password"] = HomeAssistant::mqtt.password;
     }
 
+    json["syslog"] = syslog.server;
+
     return json;
 }
 
@@ -98,7 +102,7 @@ PicoUtils::PeriodicRun healthcheck(5, []{
         last_healthy.reset();
 
     if (last_healthy.elapsed() >= 15 * 60) {
-        Serial.println(F("Healthcheck failing for too long.  Reset..."));
+        syslog.println(F("Healthcheck failing for too long.  Reset..."));
         ESP.reset();
     }
 });
@@ -187,6 +191,8 @@ void setup() {
             HomeAssistant::mqtt.username = hass["username"] | "";
             HomeAssistant::mqtt.password = hass["password"] | "";
         }
+
+        syslog.server = config["syslog"] | "";
     }
 
     Zone * zone = find_zone_by_name(local_valve->name);
@@ -221,7 +227,7 @@ void setup() {
         return false;
     },
     [](bool demand) {
-        Serial.printf("Turning boiler %s.\n", demand ? "on" : "off");
+        syslog.printf("Turning boiler %s.\n", demand ? "on" : "off");
         heating_relay.set(demand);
         heating_demand.set(demand);
     }));
