@@ -11,14 +11,13 @@
 extern PicoSyslog::Logger syslog;
 extern std::vector<Zone *> zones;
 extern String hass_autodiscovery_topic;
+extern bool healthy;
 
 namespace {
 
 const String board_id(ESP.getChipId(), HEX);
 
-std::list<PicoUtils::Watch<double>> current_temperature_watches;
-std::list<PicoUtils::Watch<double>> desired_temperature_watches;
-std::list<PicoUtils::Watch<bool>> action_watches;
+std::list<PicoUtils::WatchInterface *> watches;
 
 }
 
@@ -103,9 +102,7 @@ void init() {
         autodiscovery();
 
         // notify about the current state
-        for (const auto & watch : current_temperature_watches) { watch.fire(); }
-        for (const auto & watch : desired_temperature_watches) { watch.fire(); }
-        for (const auto & watch : action_watches) { watch.fire(); }
+        for (auto & watch : watches) { watch->fire(); }
 
         // set mode to auto for all zones
         for (auto & zone_ptr : zones) {
@@ -127,18 +124,18 @@ void init() {
             }
         });
 
-        current_temperature_watches.push_back(
-            PicoUtils::Watch<double>(
+        watches.push_back(
+            new PicoUtils::Watch<double>(
                 [&zone] { return zone.reading; },
                 [&zone] { notify_current_temperature(zone); }));
 
-        desired_temperature_watches.push_back(
-            PicoUtils::Watch<double>(
+        watches.push_back(
+            new PicoUtils::Watch<double>(
                 [&zone] { return zone.desired; },
                 [&zone] { notify_desired_temperature(zone); }));
 
-        action_watches.push_back(
-            PicoUtils::Watch<bool>(
+        watches.push_back(
+            new PicoUtils::Watch<bool>(
                 [&zone] { return zone.get_state() == ZoneState::on; },
                 [&zone] { notify_action(zone); }));
     }
@@ -147,9 +144,7 @@ void init() {
 
 void tick() {
     mqtt.loop();
-    for (auto & watch : current_temperature_watches) { watch.tick(); }
-    for (auto & watch : desired_temperature_watches) { watch.tick(); }
-    for (auto & watch : action_watches) { watch.tick(); }
+    for (auto & watch : watches) { watch->tick(); }
 }
 
 bool healthcheck() {
