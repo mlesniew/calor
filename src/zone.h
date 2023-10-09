@@ -36,8 +36,6 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
         DynamicJsonDocument get_config() const;
         DynamicJsonDocument get_status() const;
 
-        unsigned long get_seconds_since_last_reading_update() const { return reading.elapsed_millis() / 1000; }
-
         const String sensor;
         const double hysteresis;
 
@@ -47,6 +45,8 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
         PicoUtils::TimedValue<ValveState> valve_state;
 
         String unique_id() const;
+
+        bool healthcheck() const;
 
     protected:
         void update_mqtt() const override;

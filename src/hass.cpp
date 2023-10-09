@@ -150,4 +150,8 @@ void tick() {
     for (auto & watch : action_watches) { watch.tick(); }
 }
 
+bool healthcheck() {
+    return !mqtt.host.length() || !mqtt.port || mqtt.connected();
+}
+
 }

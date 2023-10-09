@@ -187,3 +187,7 @@ String Zone::unique_id() const {
     // TODO: Cache this?
     return sha1(String(name)).substring(0, 7);
 }
+
+bool Zone::healthcheck() const {
+    return get_state() != ZoneState::error;
+}

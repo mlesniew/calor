@@ -83,6 +83,26 @@ DynamicJsonDocument get_config() {
     return json;
 }
 
+bool healthy = false;
+PicoPrometheus::Gauge health_gauge(get_prometheus(), "health", "Board healthcheck", []{ return healthy ? 1 : 0; });
+
+PicoUtils::PeriodicRun healthcheck(5, []{
+    static PicoUtils::Stopwatch last_healthy;
+
+    healthy = (WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck();
+    for (auto & zone : zones) {
+        healthy = healthy && zone->healthcheck();
+    }
+
+    if (healthy)
+        last_healthy.reset();
+
+    if (last_healthy.elapsed() >= 15 * 60) {
+        Serial.println(F("Healthcheck failing for too long.  Reset..."));
+        ESP.reset();
+    }
+});
+
 void setup_server() {
 
     server.on("/zones", HTTP_GET, [] {
@@ -204,6 +224,8 @@ void setup() {
         heating_demand.set(demand);
     }));
 
+    tickables.push_back(&healthcheck);
+
     setup_server();
     get_mqtt().begin();
     HomeAssistant::init();
@@ -218,3 +240,5 @@ void loop() {
 
     HomeAssistant::tick();
 }
+
+
