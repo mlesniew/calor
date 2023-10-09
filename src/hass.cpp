@@ -39,7 +39,13 @@ void notify_desired_temperature(const Zone & zone) {
 
 void notify_action(const Zone & zone) {
     mqtt.publish("calor/" + board_id + "/" + zone.unique_id() + "/action",
-                 zone.get_state() == ZoneState::on ? "heating" : "idle",
+                 zone.boiler_desired_state() ? "heating" : "idle",
+                 0, true);
+}
+
+void notify_mode(const Zone & zone) {
+    mqtt.publish("calor/" + board_id + "/" + zone.unique_id() + "/mode",
+                 zone.enabled ? "heat" : "off",
                  0, true);
 }
 
@@ -81,7 +87,9 @@ void autodiscovery() {
         json["temperature_state_topic"] = topic_base + "/desired_temperature";
         json["action_topic"] = topic_base + "/action";
         json["mode_state_topic"] = topic_base + "/mode";
-        json["modes"][0] = "auto";
+        json["mode_command_topic"] = topic_base + "/mode/set";
+        json["modes"][0] = "heat";
+        json["modes"][1] = "off";
         json["retain"] = true;
 
         auto device = json["device"];
@@ -135,12 +143,6 @@ void init() {
         // notify about the current state
         for (auto & watch : watches) { watch->fire(); }
 
-        // set mode to auto for all zones
-        for (auto & zone_ptr : zones) {
-            auto & zone = *zone_ptr;
-            mqtt.publish("calor/" + board_id + "/" + zone.unique_id() + "/mode", "auto", 0, true);
-        }
-
         // notify about availability
         mqtt.publish(mqtt.will.topic, "online", 0, true);
     };
@@ -152,6 +154,14 @@ void init() {
             const double value = payload.toDouble();
             if (value >= 7 && value <= 25) {
                 zone.desired = value;
+            }
+        });
+
+        mqtt.subscribe(topic_base + "/mode/set", [&zone](String payload) {
+            if (payload == "heat") {
+                zone.enabled = true;
+            } else if (payload == "off") {
+                zone.enabled = false;
             }
         });
 
@@ -167,8 +177,13 @@ void init() {
 
         watches.push_back(
             new PicoUtils::Watch<bool>(
-                [&zone] { return zone.get_state() == ZoneState::on; },
+                [&zone] { return zone.boiler_desired_state(); },
                 [&zone] { notify_action(zone); }));
+
+        watches.push_back(
+            new PicoUtils::Watch<bool>(
+                [&zone] { return zone.enabled; },
+                [&zone] { notify_mode(zone); }));
     }
 
     watches.push_back(

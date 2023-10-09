@@ -26,6 +26,7 @@ Zone::Zone(const char * name, const JsonVariantConst & json)
     : NamedFSM(name, ZoneState::init),
       sensor(json["sensor"] | ""),
       hysteresis(json["hysteresis"] | 0.5),
+      enabled(json["enabled"] | true),
       reading(std::numeric_limits<double>::quiet_NaN()),
       desired(json["desired"] | 21),
       valve_state(ValveState::error),
@@ -135,11 +136,11 @@ void Zone::tick() {
 }
 
 bool Zone::boiler_desired_state() const {
-    return (get_state() == ZoneState::on);
+    return enabled && (get_state() == ZoneState::on);
 }
 
 bool Zone::valve_desired_state() const {
-    return (get_state() == ZoneState::on) || (get_state() == ZoneState::open_valve);
+    return enabled && ((get_state() == ZoneState::on) || (get_state() == ZoneState::open_valve));
 }
 
 DynamicJsonDocument Zone::get_config() const {
@@ -148,6 +149,7 @@ DynamicJsonDocument Zone::get_config() const {
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
     json["sensor"] = sensor;
+    json["enabled"] = enabled;
 
     return json;
 }

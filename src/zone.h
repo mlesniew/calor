@@ -39,6 +39,7 @@ class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
         const String sensor;
         const double hysteresis;
 
+        bool enabled;
         PicoUtils::TimedValue<double> reading;
         double desired;
 
