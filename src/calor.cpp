@@ -205,6 +205,8 @@ void setup() {
 
         watch_2->fire();
         tickables.push_back(watch_2);
+
+        tickables.push_back(new PicoUtils::PeriodicRun(10, [zone]{ zone->valve_state = local_valve->get_state(); }));
     } else {
         local_valve->demand_open = false;
     }
