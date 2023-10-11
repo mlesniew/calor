@@ -3,8 +3,9 @@
 #include <string>
 
 #include <Arduino.h>
-#include <LittleFS.h>
+#include <ArduinoOTA.h>
 #include <ESP8266WebServer.h>
+#include <LittleFS.h>
 #include <uri/UriRegex.h>
 
 #include <ArduinoJson.h>
@@ -50,6 +51,7 @@ Valve * local_valve;
 std::vector<PicoUtils::Tickable *> tickables;
 
 String hass_autodiscovery_topic = "homeassistant";
+String hostname = "calor";
 
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
 
@@ -168,8 +170,6 @@ void setup() {
     delay(3000);
     reset_button.init();
 
-    wifi_control.init(button, "calor");
-
     LittleFS.begin();
 
     {
@@ -193,7 +193,10 @@ void setup() {
         }
 
         syslog.server = config["syslog"] | "";
+        hostname = config["hostname"] | "calor";
     }
+
+    wifi_control.init(button, hostname.c_str());
 
     Zone * zone = find_zone_by_name(local_valve->name);
     if (zone) {
@@ -237,9 +240,13 @@ void setup() {
     setup_server();
     get_mqtt().begin();
     HomeAssistant::init();
+
+    ArduinoOTA.setHostname(hostname.c_str());
+    ArduinoOTA.begin();
 }
 
 void loop() {
+    ArduinoOTA.handle();
     wifi_control.tick();
     server.handleClient();
     get_mqtt().loop();
