@@ -35,13 +35,13 @@ PicoPrometheus::Registry & get_prometheus() {
 PicoPrometheus::Gauge heating_demand(get_prometheus(), "heating_demand", "Burner heat demand state");
 
 PicoSyslog::Logger syslog("calor");
-PicoUtils::PinInput<D1, false> button;
+PicoUtils::PinInput button(D1);
 PicoUtils::ResetButton reset_button(button);
 
-PicoUtils::PinOutput<D5, true> heating_relay;
-PicoUtils::PinOutput<D6, true> valve_relay;
+PicoUtils::PinOutput heating_relay(D5, true);
+PicoUtils::PinOutput valve_relay(D6, true);
 
-PicoUtils::PinOutput<D4, true> wifi_led;
+PicoUtils::PinOutput wifi_led(D4, true);
 PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
 
 std::vector<Zone *> zones;

@@ -12,6 +12,7 @@ extern PicoSyslog::Logger syslog;
 extern std::vector<Zone *> zones;
 extern String hass_autodiscovery_topic;
 extern bool healthy;
+extern PicoUtils::PinOutput heating_relay;
 
 namespace {
 
@@ -50,9 +51,6 @@ void notify_mode(const Zone & zone) {
 }
 
 void notify_health() {
-    mqtt.publish("calor/" + board_id + "/problem",
-                 !healthy ? "ON" : "OFF",
-                 0, true);
 }
 
 void autodiscovery() {
@@ -104,16 +102,30 @@ void autodiscovery() {
         publish.send();
     }
 
-    {
-        const auto unique_id = board_unique_id + "-problem";
+    struct BinarySensor {
+        const char * name;
+        const char * friendly_name;
+        const char * device_class;
+        const char * icon;
+    };
+
+    static const BinarySensor binary_sensors[] = {
+        {"problem", "Healthcheck", "problem", nullptr},
+        {"boiler", "Boiler", "power", "mdi:fire"},
+    };
+
+    for (const auto & binary_sensor: binary_sensors) {
+        const auto unique_id = board_unique_id + "-" + binary_sensor.name;
         StaticJsonDocument<1024> json;
         json["unique_id"] = unique_id;
-        json["object_id"] = "calor_problem";
-        json["name"] = "Calor problem";
-        json["device_class"] = "problem";
+        json["object_id"] = String("calor_") + binary_sensor.name;
+        json["name"] = binary_sensor.friendly_name;
+        json["device_class"] = binary_sensor.device_class;
         json["entity_category"] = "diagnostic";
         json["availability_topic"] = mqtt.will.topic;
-        json["state_topic"] = "calor/" + board_id + "/problem";
+        json["state_topic"] = "calor/" + board_id + "/" + binary_sensor.name;
+        if (binary_sensor.icon)
+            json["icon"] = binary_sensor.icon;
 
         auto device = json["device"];
         device["name"] = "Calor";
@@ -189,7 +201,21 @@ void init() {
     watches.push_back(
         new PicoUtils::Watch<bool>(
             [] { return healthy; },
-            notify_health
+            [](const bool healthy) {
+                mqtt.publish("calor/" + board_id + "/problem",
+                             !healthy ? "ON" : "OFF",
+                             0, true);
+            }
+        ));
+
+    watches.push_back(
+        new PicoUtils::Watch<bool>(
+            [] { return heating_relay.get(); },
+            [](const bool state) {
+                mqtt.publish("calor/" + board_id + "/boiler",
+                             state ? "ON" : "OFF",
+                             0, true);
+            }
         ));
 }
 
