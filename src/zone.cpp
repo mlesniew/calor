@@ -1,188 +1,130 @@
-#include <cmath>
-
-#include <ArduinoJson.h>
+#include <cstdint>
+#include <Arduino.h>
 #include <Hash.h>
-#include <PicoMQTT.h>
 
+#include <PicoPrometheus.h>
+#include <PicoSyslog.h>
+#include <ArduinoJson.h>
+
+#include "sensor.h"
+#include "valve.h"
 #include "zone.h"
 
-PicoMQTT::Publisher & get_mqtt_publisher();
-PicoMQTT::Server & get_mqtt();
+extern PicoPrometheus::Registry prometheus;
+extern PicoSyslog::Logger syslog;
 
-PicoPrometheus::Registry & get_prometheus();
-
-namespace {
-PicoPrometheus::Gauge zone_state(get_prometheus(), "zone_state", "Zone state enum");
-PicoPrometheus::Gauge zone_temperature_desired(get_prometheus(), "zone_temperature_desired",
-        "Zone's desired temperature");
-PicoPrometheus::Gauge zone_temperature_hysteresis(get_prometheus(), "zone_temperature_desired_hysteresis",
-        "Zone's desired temperature hysteresis");
-PicoPrometheus::Gauge zone_temperature_reading(get_prometheus(), "zone_temperature_reading",
-        "Zone's actual temperature");
-PicoPrometheus::Gauge zone_valve_state(get_prometheus(), "zone_valve_state", "Zone's valve state enum");
+const char * to_c_str(const Zone::State & s) {
+    switch (s) {
+        case Zone::State::init:
+            return "init";
+        case Zone::State::heat:
+            return "heat";
+        case Zone::State::wait:
+            return "wait";
+        default:
+            return "error";
+    }
 }
 
-Zone::Zone(const char * name, const JsonVariantConst & json)
-    : NamedFSM(name, ZoneState::init),
-      sensor(json["sensor"] | ""),
-      hysteresis(json["hysteresis"] | 0.5),
+Zone::Zone(const String & name, const JsonVariantConst & json)
+    : name(name),
       enabled(json["enabled"] | true),
-      reading(std::numeric_limits<double>::quiet_NaN()),
       desired(json["desired"] | 21),
-      valve_state(ValveState::error),
-      mqtt_updater(30, 15, [this] { update_mqtt(); }) {
+      hysteresis(json["hysteresis"] | 0.5),
+      state(State::init),
+      sensor(create_sensor(json["sensor"])),
+      valve(create_valve(json["valve"])) {
 
     // setup metrics
-    {
-        const auto labels = get_prometheus_labels();
-        zone_state[labels].bind([this] {
-            return static_cast<typename std::underlying_type<ZoneState>::type>(get_state());
-        });
-        zone_temperature_desired[labels].bind(desired);
-        zone_temperature_hysteresis[labels].bind(hysteresis);
-        zone_temperature_reading[labels].bind([this] {
-            return (double) reading;
-        });
-        zone_valve_state[labels].bind([this] {
-            return static_cast<typename std::underlying_type<ValveState>::type>(ValveState(valve_state));
-        });
-    }
+    static PicoPrometheus::Gauge zone_state(prometheus, "zone_state", "Zone state enum");
+    static PicoPrometheus::Gauge zone_temperature_desired(prometheus, "zone_temperature_desired",
+            "Zone's desired temperature");
+    static PicoPrometheus::Gauge zone_temperature_hysteresis(prometheus, "zone_temperature_desired_hysteresis",
+            "Zone's desired temperature hysteresis");
+    static PicoPrometheus::Gauge zone_temperature_reading(prometheus, "zone_temperature_reading",
+            "Zone's actual temperature");
+    static PicoPrometheus::Gauge zone_valve_state(prometheus, "zone_valve_state", "Zone's valve state enum");
 
-    // setup temperature subscriptions
-    if (sensor.length() != 0) {
-        const auto handler = [this](Stream & stream, const char * key) {
-            StaticJsonDocument<512> json;
-            if (deserializeJson(json, stream) || !json.containsKey(key)) {
-                return;
-            }
-            reading = json[key].as<double>();
-            Serial.printf("Temperature update for zone %s: %.2f ºC\n", this->name.c_str(), (double) reading);
-        };
-
-        String addr = sensor;
-        addr.toLowerCase();
-        get_mqtt().subscribe("celsius/+/" + addr, [handler](const char *, Stream & stream) { handler(stream, "temperature"); });
-
-        addr.toUpperCase();
-        addr.replace(":", "");
-        get_mqtt().subscribe("+/+/BTtoMQTT/" + addr, [handler](const char *, Stream & stream) { handler(stream, "tempc"); });
-    }
-
-    // setup valve subscriptions
-    get_mqtt().subscribe("valvola/valve/" + this->name, [this](const char * payload) {
-        valve_state = parse_valve_state(payload);
-        Serial.printf("Valve state update for zone %s: %s\n", this->name.c_str(), to_c_str(valve_state));
+    const PicoPrometheus::Labels labels = {{"zone", name.c_str()}};
+    zone_state[labels].bind([this] {
+        return static_cast<typename std::underlying_type<State>::type>(state);
+    });
+    zone_temperature_desired[labels].bind(desired);
+    zone_temperature_hysteresis[labels].bind(hysteresis);
+    zone_temperature_reading[labels].bind([this] {
+        return sensor->get_reading();
+    });
+    zone_valve_state[labels].bind([this] {
+        return static_cast<typename std::underlying_type<Valve::State>::type>(Valve::State(valve->get_state()));
     });
 }
 
 void Zone::tick() {
-    mqtt_updater.tick();
+    sensor->tick();
+    valve->tick();
 
-    const bool reading_timeout = reading.elapsed_millis() >= 2 * 60 * 1000;
-    const bool valve_timeout = valve_state.elapsed_millis() >= 2 * 60 * 1000;
+    auto set_state = [this](State new_state) {
+        if (new_state == state) {
+            return;
+        }
+        syslog.printf("Zone '%s' changing state from %s to %s.\n", name.c_str(), to_c_str(state), to_c_str(new_state));
+        state = new_state;
+        valve->request_open = enabled && (state == State::heat);
+    };
 
-    if (valve_timeout) {
-        valve_state = ValveState::error;
+    if (sensor->get_state() == Sensor::State::init || valve->get_state() == Valve::State::init) {
+        if (state != State::init) {
+            set_state(State::init);
+        }
+        return;
     }
 
-    if (reading_timeout) {
-        reading = std::numeric_limits<double>::quiet_NaN();
+    if (sensor->get_state() == Sensor::State::error || valve->get_state() == Valve::State::error) {
+        set_state(State::error);
+        return;
     }
 
     // FSM inputs
-    const bool comms_timeout = (reading_timeout || valve_timeout);
-    const bool error = (valve_state == ValveState::error) || std::isnan(reading);
-    const bool warm = reading >= desired + 0.5 * hysteresis;
-    const bool cold = reading <= desired - 0.5 * hysteresis;
+    const bool warm = sensor->get_reading() >= desired + 0.5 * hysteresis;
+    const bool cold = sensor->get_reading() <= desired - 0.5 * hysteresis;
 
-    switch (get_state()) {
-        case ZoneState::init:
-            if (comms_timeout) {
-                set_state(ZoneState::error);
-            } else if (!error) {
-                set_state(ZoneState::off);
-            }
+    switch (state) {
+        case State::heat:
+            set_state(warm ? State::wait : State::heat);
             break;
-
-        case ZoneState::error:
-            set_state(error ? ZoneState::error : ZoneState::off);
-            break;
-
-        case ZoneState::off:
-        case ZoneState::close_valve:
-            if (error) {
-                set_state(ZoneState::error);
-            } else if (cold) {
-                set_state(ZoneState::open_valve);
-            } else {
-                set_state((valve_state == ValveState::closed) ? ZoneState::off : ZoneState::close_valve);
-            }
-            break;
-
-        case ZoneState::on:
-        case ZoneState::open_valve:
-            if (error) {
-                set_state(ZoneState::error);
-            } else if (warm) {
-                set_state(ZoneState::close_valve);
-            } else {
-                set_state((valve_state == ValveState::open) ? ZoneState::on : ZoneState::open_valve);
-            }
-            break;
-
         default:
-            set_state(ZoneState::error);
+            set_state(cold ? State::heat : State::wait);
     }
 }
 
-bool Zone::boiler_desired_state() const {
-    return enabled && (get_state() == ZoneState::on);
-}
-
-bool Zone::valve_desired_state() const {
-    return enabled && ((get_state() == ZoneState::on) || (get_state() == ZoneState::open_valve));
+bool Zone::heat() const {
+    return enabled && (state == State::heat) && (valve->get_state() == Valve::State::open);
 }
 
 DynamicJsonDocument Zone::get_config() const {
-    DynamicJsonDocument json(256);
+    DynamicJsonDocument json(512);
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
-    json["sensor"] = sensor;
+    // json["sensor"] = sensor;  TODO
+    json["valve"] = valve->get_config();
     json["enabled"] = enabled;
 
     return json;
 }
 
 DynamicJsonDocument Zone::get_status() const {
-    DynamicJsonDocument json = get_config();
+    DynamicJsonDocument json(256);
 
-    json["reading"] = double(reading);
-    json["state"] = to_c_str(get_state());
+    json["desired"] = desired;
+    json["hysteresis"] = hysteresis;
+    json["enabled"] = enabled;
+    json["reading"] = get_reading();
+    json["state"] = to_c_str(state);
+    json["sensor"] = to_c_str(sensor->get_state());
+    json["valve"] = to_c_str(valve->get_state());
 
     return json;
-}
-
-const char * to_c_str(const ZoneState & s) {
-    switch (s) {
-        case ZoneState::init:
-            return "init";
-        case ZoneState::on:
-            return "heat";
-        case ZoneState::off:
-            return "wait";
-        case ZoneState::open_valve:
-            return "open";
-        case ZoneState::close_valve:
-            return "close";
-        default:
-            return "error";
-    }
-}
-
-void Zone::update_mqtt() const {
-    const auto topic = "valvola/valve/" + name + "/request";
-    get_mqtt_publisher().publish(topic, valve_desired_state() ? "open" : "closed");
 }
 
 String Zone::unique_id() const {
@@ -191,5 +133,13 @@ String Zone::unique_id() const {
 }
 
 bool Zone::healthcheck() const {
-    return get_state() != ZoneState::error;
+    return state != State::error;
+}
+
+double Zone::get_reading() const {
+    return sensor->get_reading();
+}
+
+Zone::State Zone::get_state() const {
+    return state;
 }

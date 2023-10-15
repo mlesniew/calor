@@ -1,61 +1,42 @@
-#ifndef ZONE_H
-#define ZONE_H
-
-#include <map>
+#pragma once
 
 #include <ArduinoJson.h>
 #include <PicoUtils.h>
 
-#include <namedfsm.h>
-#include <valve.h>
+class Valve;
+class Sensor;
 
-namespace PicoMQTT {
-class Publisher;
-};
-
-enum class ZoneState {
-    init = 0,
-    off = 1,
-    on = 2,
-    open_valve = 3,
-    close_valve = 4,
-    error = -1,
-};
-
-class Zone: public PicoUtils::Tickable, public NamedFSM<ZoneState> {
+class Zone: public PicoUtils::Tickable {
     public:
-        Zone(const char * name, const JsonVariantConst & json);
+        enum class State {
+            init = 0,
+            wait = 1,
+            heat = 2,
+            error = -1,
+        };
+
+        Zone(const String & name, const JsonVariantConst & json);
         Zone(const Zone &) = delete;
         Zone & operator=(const Zone &) = delete;
 
         void tick();
-
-        bool valve_desired_state() const;
-        bool boiler_desired_state() const;
+        bool heat() const;
 
         DynamicJsonDocument get_config() const;
         DynamicJsonDocument get_status() const;
-
-        const String sensor;
-        const double hysteresis;
-
-        bool enabled;
-        PicoUtils::TimedValue<double> reading;
-        double desired;
-
-        PicoUtils::TimedValue<ValveState> valve_state;
+        double get_reading() const;
+        State get_state() const;
 
         String unique_id() const;
-
         bool healthcheck() const;
 
-    protected:
-        void update_mqtt() const override;
-        virtual const char * get_class_name() const override { return "Zone"; }
+        const String name;
+        bool enabled;
+        double desired;
+        const double hysteresis;
 
-        PicoUtils::PeriodicRun mqtt_updater;
+    private:
+        State state;
+        Sensor * sensor;
+        Valve * valve;
 };
-
-const char * to_c_str(const ZoneState & s);
-
-#endif

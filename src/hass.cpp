@@ -28,7 +28,7 @@ PicoMQTT::Client mqtt;
 
 void notify_current_temperature(const Zone & zone) {
     mqtt.publish("calor/" + board_id + "/" + zone.unique_id() + "/current_temperature",
-                 String(zone.reading),
+                 String(zone.get_reading()),
                  0, true);
 }
 
@@ -40,7 +40,7 @@ void notify_desired_temperature(const Zone & zone) {
 
 void notify_action(const Zone & zone) {
     mqtt.publish("calor/" + board_id + "/" + zone.unique_id() + "/action",
-                 zone.boiler_desired_state() ? "heating" : "idle",
+                 zone.enabled && zone.get_state() == Zone::State::heat ? "heating" : "idle",
                  0, true);
 }
 
@@ -114,7 +114,7 @@ void autodiscovery() {
         {"boiler", "Boiler", "power", "mdi:fire"},
     };
 
-    for (const auto & binary_sensor: binary_sensors) {
+    for (const auto & binary_sensor : binary_sensors) {
         const auto unique_id = board_unique_id + "-" + binary_sensor.name;
         StaticJsonDocument<1024> json;
         json["unique_id"] = unique_id;
@@ -124,8 +124,9 @@ void autodiscovery() {
         json["entity_category"] = "diagnostic";
         json["availability_topic"] = mqtt.will.topic;
         json["state_topic"] = "calor/" + board_id + "/" + binary_sensor.name;
-        if (binary_sensor.icon)
+        if (binary_sensor.icon) {
             json["icon"] = binary_sensor.icon;
+        }
 
         auto device = json["device"];
         device["name"] = "Calor";
@@ -179,7 +180,7 @@ void init() {
 
         watches.push_back(
             new PicoUtils::Watch<double>(
-                [&zone] { return zone.reading; },
+                [&zone] { return zone.get_reading(); },
                 [&zone] { notify_current_temperature(zone); }));
 
         watches.push_back(
@@ -189,7 +190,7 @@ void init() {
 
         watches.push_back(
             new PicoUtils::Watch<bool>(
-                [&zone] { return zone.boiler_desired_state(); },
+                [&zone] { return zone.enabled && zone.get_state() == Zone::State::heat; },
                 [&zone] { notify_action(zone); }));
 
         watches.push_back(
@@ -201,21 +202,21 @@ void init() {
     watches.push_back(
         new PicoUtils::Watch<bool>(
             [] { return healthy; },
-            [](const bool healthy) {
-                mqtt.publish("calor/" + board_id + "/problem",
-                             !healthy ? "ON" : "OFF",
-                             0, true);
-            }
+    [](const bool healthy) {
+        mqtt.publish("calor/" + board_id + "/problem",
+                     !healthy ? "ON" : "OFF",
+                     0, true);
+    }
         ));
 
     watches.push_back(
         new PicoUtils::Watch<bool>(
             [] { return heating_relay.get(); },
-            [](const bool state) {
-                mqtt.publish("calor/" + board_id + "/boiler",
-                             state ? "ON" : "OFF",
-                             0, true);
-            }
+    [](const bool state) {
+        mqtt.publish("calor/" + board_id + "/boiler",
+                     state ? "ON" : "OFF",
+                     0, true);
+    }
         ));
 }
 

@@ -10,6 +10,7 @@
 
 #include <ArduinoJson.h>
 #include <PicoMQTT.h>
+#include <PicoPrometheus.h>
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
 #include <WiFiManager.h>
@@ -19,21 +20,11 @@
 #include "hass.h"
 #include "zone.h"
 
-PicoMQTT::Server & get_mqtt() {
-    static PicoMQTT::Server mqtt;
-    return mqtt;
-}
+PicoMQTT::Server mqtt;
 
-PicoMQTT::Publisher & get_mqtt_publisher() {
-    return get_mqtt();
-}
+PicoPrometheus::Registry prometheus;
 
-PicoPrometheus::Registry & get_prometheus() {
-    static PicoPrometheus::Registry prometheus;
-    return prometheus;
-}
-
-PicoPrometheus::Gauge heating_demand(get_prometheus(), "heating_demand", "Burner heat demand state");
+PicoPrometheus::Gauge heating_demand(prometheus, "heating_demand", "Burner heat demand state");
 
 PicoSyslog::Logger syslog("calor");
 PicoUtils::PinInput button(D1);
@@ -46,7 +37,6 @@ PicoUtils::PinOutput wifi_led(D4, true);
 PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
 
 std::vector<Zone *> zones;
-Valve * local_valve;
 
 std::vector<PicoUtils::Tickable *> tickables;
 
@@ -74,8 +64,6 @@ DynamicJsonDocument get_config() {
         zone_config[zone->name] = zone->get_config();
     }
 
-    json["valve"] = local_valve->get_config();
-
     {
         auto hass = json["hass"];
         hass["server"] = HomeAssistant::mqtt.host;
@@ -90,7 +78,7 @@ DynamicJsonDocument get_config() {
 }
 
 bool healthy = false;
-PicoPrometheus::Gauge health_gauge(get_prometheus(), "health", "Board healthcheck", [] { return healthy ? 1 : 0; });
+PicoPrometheus::Gauge health_gauge(prometheus, "health", "Board healthcheck", [] { return healthy ? 1 : 0; });
 
 PicoUtils::PeriodicRun healthcheck(5, [] {
     static PicoUtils::Stopwatch last_healthy;
@@ -137,9 +125,9 @@ void setup_server() {
         }
     });
 
-    get_prometheus().labels["module"] = "calor";
+    prometheus.labels["module"] = "calor";
 
-    get_prometheus().register_metrics_endpoint(server);
+    prometheus.register_metrics_endpoint(server);
 
     server.begin();
 }
@@ -173,16 +161,13 @@ void setup() {
     LittleFS.begin();
 
     {
-        const auto config = PicoUtils::JsonConfigFile<StaticJsonDocument<1024>>(LittleFS, FPSTR(CONFIG_FILE));
+        const auto config = PicoUtils::JsonConfigFile<DynamicJsonDocument>(LittleFS, FPSTR(CONFIG_FILE), 3 * 1024);
 
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
             Zone * zone = new Zone(kv.key().c_str(), kv.value());
             zones.push_back(zone);
             tickables.push_back(zone);
         }
-
-        local_valve = new Valve(valve_relay, config["valve"]);
-        tickables.push_back(local_valve);
 
         {
             const auto hass = config["hass"];
@@ -198,32 +183,10 @@ void setup() {
 
     wifi_control.init(button, hostname.c_str());
 
-    Zone * zone = find_zone_by_name(local_valve->name);
-    if (zone) {
-        // bind zone desired valve state to local valve
-        auto * watch_1 = new PicoUtils::Watch<bool>(
-            [zone] { return zone->valve_desired_state(); },
-        [zone](bool demand) { local_valve->demand_open = demand; });
-
-        watch_1->fire();
-        tickables.push_back(watch_1);
-
-        auto * watch_2 = new PicoUtils::Watch<ValveState>(
-            [] { return local_valve->get_state(); },
-        [zone](ValveState state) { zone->valve_state = state; });
-
-        watch_2->fire();
-        tickables.push_back(watch_2);
-
-        tickables.push_back(new PicoUtils::PeriodicRun(10, [zone] { zone->valve_state = local_valve->get_state(); }));
-    } else {
-        local_valve->demand_open = false;
-    }
-
     tickables.push_back(new PicoUtils::Watch<bool>(
     [] {
         for (auto & zone : zones) {
-            if (zone->boiler_desired_state()) {
+            if (zone->heat()) {
                 return true;
             }
         }
@@ -238,7 +201,7 @@ void setup() {
     tickables.push_back(&healthcheck);
 
     setup_server();
-    get_mqtt().begin();
+    mqtt.begin();
     HomeAssistant::init();
 
     ArduinoOTA.setHostname(hostname.c_str());
@@ -249,11 +212,9 @@ void loop() {
     ArduinoOTA.handle();
     wifi_control.tick();
     server.handleClient();
-    get_mqtt().loop();
+    mqtt.loop();
 
     for (auto & tickable : tickables) { tickable->tick(); }
 
     HomeAssistant::tick();
 }
-
-

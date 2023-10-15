@@ -1,3 +1,0 @@
-[submodule "lib/valve"]
-	path = lib/valve
-	url = git@github.com:mlesniew/valve.git
