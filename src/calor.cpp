@@ -23,8 +23,6 @@ PicoMQTT::Server mqtt;
 
 PicoPrometheus::Registry prometheus;
 
-PicoPrometheus::Gauge heating_demand(prometheus, "heating_demand", "Burner heat demand state");
-
 PicoSyslog::Logger syslog("calor");
 PicoUtils::PinInput button(D1);
 PicoUtils::ResetButton reset_button(button);
@@ -43,6 +41,9 @@ String hass_autodiscovery_topic = "homeassistant";
 String hostname = "calor";
 
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
+
+PicoPrometheus::Gauge heating_demand(prometheus, "heating_demand", "Burner heat demand state",
+                                     [] { return heating_relay.get() ? 1 : 0; });
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
 
@@ -242,7 +243,6 @@ void setup() {
     [](bool demand) {
         syslog.printf("Turning boiler %s.\n", demand ? "on" : "off");
         heating_relay.set(demand);
-        heating_demand.set(demand);
     }));
 
     tickables.push_back(&healthcheck);

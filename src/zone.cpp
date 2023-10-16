@@ -44,6 +44,7 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
     static PicoPrometheus::Gauge zone_temperature_reading(prometheus, "zone_temperature_reading",
             "Zone's actual temperature");
     static PicoPrometheus::Gauge zone_valve_state(prometheus, "zone_valve_state", "Zone's valve state enum");
+    static PicoPrometheus::Gauge zone_enabled(prometheus, "zone_enabled", "Zone enabled flag");
 
     const PicoPrometheus::Labels labels = {{"zone", name.c_str()}};
     zone_state[labels].bind([this] {
@@ -56,6 +57,9 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
     });
     zone_valve_state[labels].bind([this] {
         return static_cast<typename std::underlying_type<Valve::State>::type>(Valve::State(valve->get_state()));
+    });
+    zone_enabled[labels].bind([this] {
+        return enabled ? 1 : 0;
     });
 }
 
