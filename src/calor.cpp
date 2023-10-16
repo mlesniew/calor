@@ -13,7 +13,6 @@
 #include <PicoPrometheus.h>
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
-#include <WiFiManager.h>
 
 #include <valve.h>
 
@@ -34,7 +33,7 @@ PicoUtils::PinOutput heating_relay(D5, true);
 PicoUtils::PinOutput valve_relay(D6, true);
 
 PicoUtils::PinOutput wifi_led(D4, true);
-PicoUtils::WiFiControl<WiFiManager> wifi_control(wifi_led);
+PicoUtils::Blink led_blinker(wifi_led, 0, 91);
 
 std::vector<Zone *> zones;
 
@@ -57,7 +56,7 @@ Zone * find_zone_by_name(const String & name) {
 }
 
 DynamicJsonDocument get_config() {
-    DynamicJsonDocument json(1024);
+    DynamicJsonDocument json(3 * 1024);
 
     auto zone_config = json["zones"].to<JsonObject>();
     for (const auto & zone : zones) {
@@ -95,7 +94,51 @@ PicoUtils::PeriodicRun healthcheck(5, [] {
         syslog.println(F("Healthcheck failing for too long.  Reset..."));
         ESP.reset();
     }
+
+    if (healthy) {
+        led_blinker.set_pattern(uint64_t(1) << 60);
+    } else {
+        led_blinker.set_pattern(0b1100);
+    }
 });
+
+void setup_wifi() {
+    WiFi.hostname(hostname);
+    WiFi.setAutoReconnect(true);
+
+    Serial.println(F("Press button now to enter SmartConfig."));
+    led_blinker.set_pattern(1);
+    const PicoUtils::Stopwatch stopwatch;
+    bool smart_config = false;
+    {
+        while (!smart_config && (stopwatch.elapsed_millis() < 5 * 1000)) {
+            smart_config = button;
+            delay(100);
+        }
+    }
+
+    if (smart_config) {
+        led_blinker.set_pattern(0b100100100 << 9);
+
+        Serial.println(F("Entering SmartConfig mode."));
+        WiFi.beginSmartConfig();
+        while (!WiFi.smartConfigDone() && (stopwatch.elapsed_millis() < 5 * 60 * 1000)) {
+            delay(100);
+        }
+
+        if (WiFi.smartConfigDone()) {
+            Serial.println(F("SmartConfig success."));
+        } else {
+            Serial.println(F("SmartConfig failed.  Reboot."));
+            ESP.reset();
+        }
+    } else {
+        WiFi.softAPdisconnect(true);
+        WiFi.begin();
+    }
+
+    led_blinker.set_pattern(0b10);
+}
 
 void setup_server() {
 
@@ -142,6 +185,10 @@ void setup() {
     wifi_led.init();
     wifi_led.set(true);
 
+    wifi_led.init();
+    led_blinker.set_pattern(0b10);
+    PicoUtils::BackgroundBlinker bb(led_blinker);
+
     Serial.begin(115200);
 
     Serial.println(F("\n\n"
@@ -181,7 +228,7 @@ void setup() {
         hostname = config["hostname"] | "calor";
     }
 
-    wifi_control.init(button, hostname.c_str());
+    setup_wifi();
 
     tickables.push_back(new PicoUtils::Watch<bool>(
     [] {
@@ -199,6 +246,7 @@ void setup() {
     }));
 
     tickables.push_back(&healthcheck);
+    tickables.push_back(&led_blinker);
 
     setup_server();
     mqtt.begin();
@@ -210,11 +258,8 @@ void setup() {
 
 void loop() {
     ArduinoOTA.handle();
-    wifi_control.tick();
     server.handleClient();
     mqtt.loop();
-
     for (auto & tickable : tickables) { tickable->tick(); }
-
     HomeAssistant::tick();
 }

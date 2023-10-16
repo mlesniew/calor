@@ -31,6 +31,11 @@ DummySensor::DummySensor() {
 
 void DummySensor::tick() {}
 
+DynamicJsonDocument DummySensor::get_config() const {
+    DynamicJsonDocument json(0);
+    return json;
+}
+
 KelvinSensor::KelvinSensor(const String & address)
     : address(address), reading(std::numeric_limits<double>::quiet_NaN()) {
 
@@ -56,9 +61,18 @@ void KelvinSensor::tick() {
 
 double KelvinSensor::get_reading() const { return reading; }
 
+DynamicJsonDocument KelvinSensor::get_config() const {
+    DynamicJsonDocument json(64);
+    json["type"] = "kelvin";
+    json["address"] = address;
+    return json;
+}
+
 Sensor * create_sensor(const JsonVariantConst & json) {
     if (json.is<const char *>()) {
         return new KelvinSensor(json.as<const char *>());
+    } else if (json["type"] == "kelvin") {
+        return new KelvinSensor(json["address"] | "");
     } else {
         return new DummySensor();
     }

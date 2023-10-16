@@ -16,6 +16,7 @@ class Sensor: public PicoUtils::Tickable {
         virtual String str() const = 0;
         virtual double get_reading() const { return std::numeric_limits<double>::quiet_NaN(); }
         State get_state() const { return state; }
+        virtual DynamicJsonDocument get_config() const = 0;
 
     protected:
         void set_state(State new_state);
@@ -29,6 +30,7 @@ class DummySensor: public Sensor {
         DummySensor();
         void tick() override;
         virtual String str() const override { return "dummy"; }
+        DynamicJsonDocument get_config() const override;
 };
 
 class KelvinSensor: public Sensor {
@@ -38,6 +40,7 @@ class KelvinSensor: public Sensor {
         void tick() override;
         virtual String str() const override { return "kelvin/" + address; }
         double get_reading() const override;
+        DynamicJsonDocument get_config() const override;
 
         const String address;
 

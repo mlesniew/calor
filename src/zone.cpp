@@ -106,7 +106,7 @@ DynamicJsonDocument Zone::get_config() const {
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
-    // json["sensor"] = sensor;  TODO
+    json["sensor"] = sensor->get_config();
     json["valve"] = valve->get_config();
     json["enabled"] = enabled;
 
