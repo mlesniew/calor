@@ -78,7 +78,7 @@ void Zone::tick() {
         syslog.printf("Zone '%s' changing state from %s to %s.\n", name.c_str(), to_c_str(state), to_c_str(new_state));
         state = new_state;
         if (valve) {
-            valve->activate = enabled && (state == State::heat);
+            valve->set_request(this, (enabled && (state == State::heat)));
         }
     };
 

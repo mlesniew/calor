@@ -30,7 +30,7 @@ const char * to_c_str(const Schalter::State & s) {
 }
 
 Schalter::Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis)
-    : activate(false), address(address), index(index), switch_time_millis(switch_time_millis),
+    : address(address), index(index), switch_time_millis(switch_time_millis),
       state(State::init), is_active(false), last_request(false) {
 
     if (!address.length()) {
@@ -58,7 +58,13 @@ void Schalter::set_state(State new_state) {
     state = new_state;
 }
 
+void Schalter::set_request(const void * requester, bool requesting) {
+    if (requesting) { requesters.insert(requester); } else { requesters.erase(requester); }
+}
+
 void Schalter::tick() {
+    const bool activate = !requesters.empty();
+
     if (address.length() && ((last_request.elapsed_millis() >= 15 * 1000) || (last_request != activate))) {
         mqtt.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
         last_request = activate;

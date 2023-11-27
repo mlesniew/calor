@@ -17,7 +17,7 @@ class Schalter: public PicoUtils::Tickable {
         Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis);
         String str() const { return address + "/" + String(index); }
 
-        bool activate;
+        void set_request(const void * requester, bool requesting);
 
         const String address;
         const unsigned int index;
@@ -28,6 +28,7 @@ class Schalter: public PicoUtils::Tickable {
         DynamicJsonDocument get_config() const;
 
     protected:
+        std::set<const void *> requesters;
         PicoUtils::TimedValue<State> state;
         PicoUtils::TimedValue<bool> is_active;
         PicoUtils::TimedValue<bool> last_request;
