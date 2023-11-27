@@ -3,21 +3,21 @@
 #include <ArduinoJson.h>
 #include <PicoUtils.h>
 
-class Valve: public PicoUtils::Tickable {
+class Schalter: public PicoUtils::Tickable {
     public:
         enum class State {
             init = 0,
-            closed = 1,
-            opening = 2,
-            closing = 3,
-            open = 4,
+            inactive = 1,
+            activating = 2,
+            deactivating = 3,
+            active = 4,
             error = -1,
         };
 
-        Valve(const JsonVariantConst & json);
+        Schalter(const JsonVariantConst & json);
         String str() const { return address + "/" + String(index); }
 
-        bool request_open;
+        bool activate;
 
         const String address;
         const unsigned int index;
@@ -28,15 +28,14 @@ class Valve: public PicoUtils::Tickable {
         DynamicJsonDocument get_config() const;
 
     protected:
+        PicoUtils::TimedValue<State> state;
         PicoUtils::TimedValue<bool> is_active;
         PicoUtils::TimedValue<bool> last_request;
 
         void set_state(State new_state);
         unsigned long get_state_elapsed_millis() { return state.elapsed_millis(); }
 
-    private:
-        PicoUtils::TimedValue<State> state;
 };
 
-const char * to_c_str(const Valve::State & s);
-Valve * get_valve(const JsonVariantConst & json);
+const char * to_c_str(const Schalter::State & s);
+Schalter * get_schalter(const JsonVariantConst & json);

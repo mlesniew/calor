@@ -14,8 +14,6 @@
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
 
-#include <valve.h>
-
 #include "hass.h"
 #include "zone.h"
 

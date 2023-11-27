@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 
 #include "sensor.h"
-#include "valve.h"
+#include "schalter.h"
 #include "zone.h"
 
 extern PicoPrometheus::Registry prometheus;
@@ -33,7 +33,7 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
       hysteresis(json["hysteresis"] | 0.5),
       state(State::init),
       sensor(create_sensor(json["sensor"])),
-      valve(get_valve(json["valve"])) {
+      valve(get_schalter(json["valve"])) {
 
     // setup metrics
     static PicoPrometheus::Gauge zone_state(prometheus, "zone_state", "Zone state enum");
@@ -57,7 +57,7 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
     });
     if (valve) {
         zone_valve_state[labels].bind([this] {
-            return static_cast<typename std::underlying_type<Valve::State>::type>(Valve::State(valve->get_state()));
+            return static_cast<typename std::underlying_type<Schalter::State>::type>(Schalter::State(valve->get_state()));
         });
     }
     zone_enabled[labels].bind([this] {
@@ -78,18 +78,18 @@ void Zone::tick() {
         syslog.printf("Zone '%s' changing state from %s to %s.\n", name.c_str(), to_c_str(state), to_c_str(new_state));
         state = new_state;
         if (valve) {
-            valve->request_open = enabled && (state == State::heat);
+            valve->activate = enabled && (state == State::heat);
         }
     };
 
-    if (sensor->get_state() == Sensor::State::init || (valve && valve->get_state() == Valve::State::init)) {
+    if (sensor->get_state() == Sensor::State::init || (valve && valve->get_state() == Schalter::State::init)) {
         if (state != State::init) {
             set_state(State::init);
         }
         return;
     }
 
-    if (sensor->get_state() == Sensor::State::error || (valve && valve->get_state() == Valve::State::error)) {
+    if (sensor->get_state() == Sensor::State::error || (valve && valve->get_state() == Schalter::State::error)) {
         set_state(State::error);
         return;
     }
@@ -108,7 +108,7 @@ void Zone::tick() {
 }
 
 bool Zone::heat() const {
-    return enabled && (state == State::heat) && (!valve || (valve->get_state() == Valve::State::open));
+    return enabled && (state == State::heat) && (!valve || (valve->get_state() == Schalter::State::active));
 }
 
 DynamicJsonDocument Zone::get_config() const {

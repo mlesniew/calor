@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <PicoUtils.h>
 
-class Valve;
+class Schalter;
 class Sensor;
 
 class Zone: public PicoUtils::Tickable {
@@ -38,5 +38,5 @@ class Zone: public PicoUtils::Tickable {
     private:
         State state;
         Sensor * sensor;
-        Valve * valve;
+        Schalter * valve;
 };
