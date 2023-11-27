@@ -14,7 +14,7 @@ class Schalter: public PicoUtils::Tickable {
             error = -1,
         };
 
-        Schalter(const JsonVariantConst & json);
+        Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis);
         String str() const { return address + "/" + String(index); }
 
         bool activate;

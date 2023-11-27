@@ -1,3 +1,5 @@
+#include <list>
+
 #include <PicoMQTT.h>
 #include <PicoSyslog.h>
 
@@ -5,6 +7,10 @@
 
 extern PicoSyslog::Logger syslog;
 extern PicoMQTT::Server mqtt;
+
+namespace {
+std::list<Schalter *> schalters;
+}
 
 const char * to_c_str(const Schalter::State & s) {
     switch (s) {
@@ -23,10 +29,9 @@ const char * to_c_str(const Schalter::State & s) {
     }
 }
 
-Schalter::Schalter(const JsonVariantConst & json)
-    : activate(false), address(json["address"] | ""), index(json["index"] | 0),
-      switch_time_millis((json["switch_time"] | 120) * 1000), state(State::init),
-      is_active(false), last_request(false) {
+Schalter::Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis)
+    : activate(false), address(address), index(index), switch_time_millis(switch_time_millis),
+      state(State::init), is_active(false), last_request(false) {
 
     if (!address.length()) {
         set_state(State::error);
@@ -107,10 +112,22 @@ DynamicJsonDocument Schalter::get_config() const {
 }
 
 Schalter * get_schalter(const JsonVariantConst & json) {
-    const String type = json["type"] | "null";
-    if (json.isNull()) {
+    const String address = json["address"] | "";
+    const unsigned int index = json["index"] | 0;
+    const unsigned long switch_time_millis = (json["switch_time"] | 120) * 1000;
+
+    if (address.length() == 0 || index == 0) {
         return nullptr;
-    } else {
-        return new Schalter(json);
     }
+
+    for (auto schalter : schalters) {
+        if ((schalter->address == address) && (schalter->index == index)) {
+            return schalter;
+        }
+    }
+
+    auto schalter = new Schalter(address, index, switch_time_millis);
+    schalters.push_back(schalter);
+
+    return schalter;
 }
