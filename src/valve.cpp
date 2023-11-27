@@ -31,17 +31,45 @@ void Valve::set_state(State new_state) {
     state = new_state;
 }
 
-DynamicJsonDocument DummyValve::get_config() const {
-    DynamicJsonDocument json(128);
-    json["type"] = "null";
-    return json;
+Valve::Valve(const JsonVariantConst & json)
+    : request_open(false), state(State::init), address(json["address"] | ""), index(json["index"] | 0),
+      switch_time_millis((json["switch_time"] | 120) * 1000), is_active(false), last_request(false) {
+
+    if (!address.length()) {
+        set_state(State::error);
+        return;
+    }
+
+    mqtt.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
+        if (payload == "ON") {
+            is_active = true;
+            tick();
+        } else if (payload == "OFF") {
+            is_active = false;
+            tick();
+        }
+    });
+
 }
 
-void PhysicalValve::tick() {
-    const bool output_active = is_output_active();
-    const bool timeout = (get_state_elapsed_millis() >= switch_time_millis);
+void Valve::tick() {
+    if (address.length() && ((last_request.elapsed_millis() >= 15 * 1000) || (last_request != request_open))) {
+        mqtt.publish("schalter/" + address + "/" + String(index) + "/set", request_open ? "ON" : "OFF");
+        last_request = request_open;
+    }
 
-    switch (get_state()) {
+    if (is_active.elapsed_millis() >= 2 * 60 * 1000) {
+        set_state(State::error);
+    }
+
+    const bool output_active = bool(is_active);
+    const bool timeout = (state.elapsed_millis() >= switch_time_millis);
+
+    switch (state) {
+        case State::error:
+        case State::init:
+            // noop
+            break;
         case State::closed:
             if (output_active) {
                 set_state(State::opening);
@@ -66,86 +94,22 @@ void PhysicalValve::tick() {
                 set_state(State::open);
             }
             break;
-        default:
-            set_state(output_active ? State::opening : State::closing);
     }
 }
 
-DynamicJsonDocument PhysicalValve::get_config() const {
+DynamicJsonDocument Valve::get_config() const {
     DynamicJsonDocument json(256);
+    json["address"] = address;
+    json["index"] = index;
     json["switch_time"] = switch_time_millis / 1000;
     return json;
 }
 
-void LocalValve::tick() {
-    output = request_open;
-    PhysicalValve::tick();
-}
-
-DynamicJsonDocument LocalValve::get_config() const {
-    DynamicJsonDocument json = PhysicalValve::get_config();
-    json["type"] = "local";
-    return json;
-}
-
-SchalterValve::SchalterValve(const JsonVariantConst & json)
-    : PhysicalValve(json), address(json["address"] | ""), index(json["index"] | 0),
-      is_active(false), last_request(false) {
-
-    if (!address.length()) {
-        set_state(State::error);
-        return;
-    }
-
-    mqtt.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
-        if (payload == "ON") {
-            is_active = true;
-            PhysicalValve::tick();
-        } else if (payload == "OFF") {
-            is_active = false;
-            PhysicalValve::tick();
-        }
-    });
-
-}
-
-void SchalterValve::tick() {
-    if (address.length() && ((last_request.elapsed_millis() >= 15 * 1000) || (last_request != request_open))) {
-        mqtt.publish("schalter/" + address + "/" + String(index) + "/set", request_open ? "ON" : "OFF");
-        last_request = request_open;
-    }
-
-    if (is_active.elapsed_millis() >= 2 * 60 * 1000) {
-        set_state(State::error);
-    }
-
-    switch (get_state()) {
-        case State::error:
-        case State::init:
-            // noop
-            break;
-        default:
-            PhysicalValve::tick();
-    }
-}
-
-DynamicJsonDocument SchalterValve::get_config() const {
-    DynamicJsonDocument json = PhysicalValve::get_config();
-    json["type"] = "schalter";
-    json["address"] = address;
-    json["index"] = index;
-    return json;
-}
-
-Valve * create_valve(const JsonVariantConst & json) {
+Valve * get_valve(const JsonVariantConst & json) {
     const String type = json["type"] | "null";
-    if (type == "local") {
-        extern PicoUtils::PinOutput valve_relay;
-        static Valve * local_valve = new LocalValve(json, valve_relay);
-        return local_valve;
-    } else if (type == "schalter") {
-        return new SchalterValve(json);
+    if (json.isNull()) {
+        return nullptr;
     } else {
-        return new DummyValve();
+        return new Valve(json);
     }
 }

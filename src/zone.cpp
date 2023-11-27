@@ -33,7 +33,7 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
       hysteresis(json["hysteresis"] | 0.5),
       state(State::init),
       sensor(create_sensor(json["sensor"])),
-      valve(create_valve(json["valve"])) {
+      valve(get_valve(json["valve"])) {
 
     // setup metrics
     static PicoPrometheus::Gauge zone_state(prometheus, "zone_state", "Zone state enum");
@@ -55,9 +55,11 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
     zone_temperature_reading[labels].bind([this] {
         return sensor->get_reading();
     });
-    zone_valve_state[labels].bind([this] {
-        return static_cast<typename std::underlying_type<Valve::State>::type>(Valve::State(valve->get_state()));
-    });
+    if (valve) {
+        zone_valve_state[labels].bind([this] {
+            return static_cast<typename std::underlying_type<Valve::State>::type>(Valve::State(valve->get_state()));
+        });
+    }
     zone_enabled[labels].bind([this] {
         return enabled ? 1 : 0;
     });
@@ -65,7 +67,9 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
 
 void Zone::tick() {
     sensor->tick();
-    valve->tick();
+    if (valve) {
+        valve->tick();
+    }
 
     auto set_state = [this](State new_state) {
         if (new_state == state) {
@@ -73,17 +77,19 @@ void Zone::tick() {
         }
         syslog.printf("Zone '%s' changing state from %s to %s.\n", name.c_str(), to_c_str(state), to_c_str(new_state));
         state = new_state;
-        valve->request_open = enabled && (state == State::heat);
+        if (valve) {
+            valve->request_open = enabled && (state == State::heat);
+        }
     };
 
-    if (sensor->get_state() == Sensor::State::init || valve->get_state() == Valve::State::init) {
+    if (sensor->get_state() == Sensor::State::init || (valve && valve->get_state() == Valve::State::init)) {
         if (state != State::init) {
             set_state(State::init);
         }
         return;
     }
 
-    if (sensor->get_state() == Sensor::State::error || valve->get_state() == Valve::State::error) {
+    if (sensor->get_state() == Sensor::State::error || (valve && valve->get_state() == Valve::State::error)) {
         set_state(State::error);
         return;
     }
@@ -102,7 +108,7 @@ void Zone::tick() {
 }
 
 bool Zone::heat() const {
-    return enabled && (state == State::heat) && (valve->get_state() == Valve::State::open);
+    return enabled && (state == State::heat) && (!valve || (valve->get_state() == Valve::State::open));
 }
 
 DynamicJsonDocument Zone::get_config() const {
@@ -111,7 +117,9 @@ DynamicJsonDocument Zone::get_config() const {
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
     json["sensor"] = sensor->get_config();
-    json["valve"] = valve->get_config();
+    if (valve) {
+        json["valve"] = valve->get_config();
+    }
     json["enabled"] = enabled;
 
     return json;
@@ -126,7 +134,9 @@ DynamicJsonDocument Zone::get_status() const {
     json["reading"] = get_reading();
     json["state"] = to_c_str(state);
     json["sensor"] = to_c_str(sensor->get_state());
-    json["valve"] = to_c_str(valve->get_state());
+    if (valve) {
+        json["valve"] = to_c_str(valve->get_state());
+    }
 
     return json;
 }

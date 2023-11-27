@@ -28,7 +28,6 @@ PicoUtils::PinInput button(D1);
 PicoUtils::ResetButton reset_button(button);
 
 PicoUtils::PinOutput heating_relay(D5, true);
-PicoUtils::PinOutput valve_relay(D6, true);
 
 PicoUtils::PinOutput wifi_led(D4, true);
 PicoUtils::Blink led_blinker(wifi_led, 0, 91);
@@ -179,9 +178,6 @@ void setup_server() {
 void setup() {
     heating_relay.init();
     heating_relay.set(false);
-
-    valve_relay.init();
-    valve_relay.set(false);
 
     wifi_led.init();
     wifi_led.set(true);
