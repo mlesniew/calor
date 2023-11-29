@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <PicoUtils.h>
 
-class Schalter: public PicoUtils::Tickable {
+class AbstractSchalter: public PicoUtils::Tickable {
     public:
         enum class State {
             init = 0,
@@ -14,28 +14,42 @@ class Schalter: public PicoUtils::Tickable {
             error = -1,
         };
 
-        Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis);
-        String str() const { return address + "/" + String(index); }
+        AbstractSchalter(): state(State::init) {}
+
+        virtual String str() const = 0;
+        virtual DynamicJsonDocument get_config() const = 0;
 
         void set_request(const void * requester, bool requesting);
+
+        State get_state() const { return state; }
+
+
+    protected:
+        void set_state(State new_state);
+        bool has_activation_requests() const { return !requesters.empty(); }
+        unsigned long get_state_time_millis() const { return state.elapsed_millis(); }
+
+    private:
+        std::set<const void *> requesters;
+        PicoUtils::TimedValue<State> state;
+};
+
+class Schalter: public AbstractSchalter {
+    public:
+
+        Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis);
+        String str() const override { return address + "/" + String(index); }
 
         const String address;
         const unsigned int index;
         const unsigned long switch_time_millis;
 
         void tick() override;
-        State get_state() const { return state; }
-        DynamicJsonDocument get_config() const;
+        DynamicJsonDocument get_config() const override;
 
     protected:
-        std::set<const void *> requesters;
-        PicoUtils::TimedValue<State> state;
         PicoUtils::TimedValue<bool> is_active;
         PicoUtils::TimedValue<bool> last_request;
-
-        void set_state(State new_state);
-        unsigned long get_state_elapsed_millis() { return state.elapsed_millis(); }
-
 };
 
 const char * to_c_str(const Schalter::State & s);

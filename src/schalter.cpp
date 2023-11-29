@@ -31,7 +31,7 @@ const char * to_c_str(const Schalter::State & s) {
 
 Schalter::Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis)
     : address(address), index(index), switch_time_millis(switch_time_millis),
-      state(State::init), is_active(false), last_request(false) {
+      is_active(false), last_request(false) {
 
     if (!address.length()) {
         set_state(State::error);
@@ -50,7 +50,7 @@ Schalter::Schalter(const String address, const unsigned int index, const unsigne
 
 }
 
-void Schalter::set_state(State new_state) {
+void AbstractSchalter::set_state(State new_state) {
     if (state == new_state) {
         return;
     }
@@ -58,12 +58,12 @@ void Schalter::set_state(State new_state) {
     state = new_state;
 }
 
-void Schalter::set_request(const void * requester, bool requesting) {
+void AbstractSchalter::set_request(const void * requester, bool requesting) {
     if (requesting) { requesters.insert(requester); } else { requesters.erase(requester); }
 }
 
 void Schalter::tick() {
-    const bool activate = !requesters.empty();
+    const bool activate = has_activation_requests();
 
     if (address.length() && ((last_request.elapsed_millis() >= 15 * 1000) || (last_request != activate))) {
         mqtt.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
@@ -75,9 +75,9 @@ void Schalter::tick() {
     }
 
     const bool output_active = bool(is_active);
-    const bool timeout = (state.elapsed_millis() >= switch_time_millis);
+    const bool timeout = (get_state_time_millis() >= switch_time_millis);
 
-    switch (state) {
+    switch (get_state()) {
         case State::error:
         case State::init:
             // noop
