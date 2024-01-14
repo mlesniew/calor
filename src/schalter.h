@@ -1,5 +1,7 @@
 #pragma once
 
+#include <list>
+
 #include <ArduinoJson.h>
 #include <PicoUtils.h>
 
@@ -22,7 +24,7 @@ class AbstractSchalter: public PicoUtils::Tickable {
         void set_request(const void * requester, bool requesting);
 
         State get_state() const { return state; }
-
+        bool is_ok() const { return state != State::error && state != State::init; }
 
     protected:
         void set_state(State new_state);
@@ -32,6 +34,37 @@ class AbstractSchalter: public PicoUtils::Tickable {
     private:
         std::set<const void *> requesters;
         PicoUtils::TimedValue<State> state;
+};
+
+class SchalterGroup: public AbstractSchalter {
+    public:
+        SchalterGroup(const std::list<AbstractSchalter *> schalters)
+            : schalters(schalters) {}
+
+        String str() const override;
+        DynamicJsonDocument get_config() const override;
+
+    protected:
+        virtual String get_group_type() const = 0;
+        const std::list<AbstractSchalter *> schalters;
+};
+
+class SchalterSequence: public SchalterGroup {
+    public:
+        using SchalterGroup::SchalterGroup;
+        void tick() override;
+
+    protected:
+        String get_group_type() const override { return "sequence"; }
+};
+
+class SchalterSet: public SchalterGroup {
+    public:
+        using SchalterGroup::SchalterGroup;
+        void tick() override;
+
+    protected:
+        String get_group_type() const override { return "set"; }
 };
 
 class Schalter: public AbstractSchalter {
@@ -53,4 +86,4 @@ class Schalter: public AbstractSchalter {
 };
 
 const char * to_c_str(const Schalter::State & s);
-Schalter * get_schalter(const JsonVariantConst & json);
+AbstractSchalter * get_schalter(const JsonVariantConst & json);

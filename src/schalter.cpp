@@ -1,5 +1,3 @@
-#include <list>
-
 #include <PicoMQTT.h>
 #include <PicoSyslog.h>
 
@@ -39,6 +37,7 @@ Schalter::Schalter(const String address, const unsigned int index, const unsigne
     }
 
     mqtt.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
+        syslog.printf("Got update on valve %s: %s\n", str().c_str(), payload.c_str());
         if (payload == "ON") {
             is_active = true;
             tick();
@@ -64,13 +63,14 @@ void AbstractSchalter::set_request(const void * requester, bool requesting) {
 
 void Schalter::tick() {
     const bool activate = has_activation_requests();
+    const bool is_error = is_active.elapsed_millis() >= 2 * 60 * 1000;
 
     if (address.length() && ((last_request.elapsed_millis() >= 15 * 1000) || (last_request != activate))) {
         mqtt.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
         last_request = activate;
     }
 
-    if (is_active.elapsed_millis() >= 2 * 60 * 1000) {
+    if (is_error) {
         set_state(State::error);
     }
 
@@ -80,7 +80,9 @@ void Schalter::tick() {
     switch (get_state()) {
         case State::error:
         case State::init:
-            // noop
+            if (!is_error) {
+                set_state(output_active ? State::activating : State::deactivating);
+            }
             break;
         case State::inactive:
             if (output_active) {
@@ -117,23 +119,123 @@ DynamicJsonDocument Schalter::get_config() const {
     return json;
 }
 
-Schalter * get_schalter(const JsonVariantConst & json) {
-    const String address = json["address"] | "";
-    const unsigned int index = json["index"] | 0;
-    const unsigned long switch_time_millis = (json["switch_time"] | 120) * 1000;
+String SchalterGroup::str() const {
+    String ret;
+    bool first = true;
+    for (AbstractSchalter * schalter : schalters) {
+        if (first) {
+            ret = schalter->str();
+            first = false;
+        } else {
+            ret = ret + ", " + schalter->str();
+        }
+    };
+    return get_group_type() + ":[" + ret + "]";
+}
 
-    if (address.length() == 0 || index == 0) {
-        return nullptr;
+DynamicJsonDocument SchalterGroup::get_config() const {
+    DynamicJsonDocument json(1024);
+    json["type"] = get_group_type();
+    size_t idx = 0;
+    for (AbstractSchalter * schalter : schalters) {
+        json["elements"][idx++] = schalter->get_config();
+    }
+    return json;
+}
+
+void SchalterSequence::tick() {
+    std::map<State, size_t> states;
+    bool activate_next = has_activation_requests() && is_ok();
+
+    for (AbstractSchalter * schalter : schalters) {
+        schalter->tick();
+        states[schalter->get_state()] += 1;
+        schalter->set_request(this, activate_next);
+        activate_next = activate_next && (schalter->get_state() == State::active);
     }
 
-    for (auto schalter : schalters) {
-        if ((schalter->address == address) && (schalter->index == index)) {
-            return schalter;
+    if (states[State::error] > 0) {
+        // if any element is in error state, we're in error state too
+        set_state(State::error);
+    } else if (states[State::init]) {
+        // if any element is in init state (but no errors), we're in init state too
+        set_state(State::init);
+    } else if (has_activation_requests() && (states[State::active] == schalters.size())) {
+        // only active elements, means we're active too
+        set_state(State::active);
+    } else if (!has_activation_requests() && (states[State::inactive] == schalters.size())) {
+        // only inactive elements, means we're inactive too
+        set_state(State::inactive);
+    } else {
+        // states are different we're transitioning
+        set_state(has_activation_requests() ? State::activating : State::deactivating);
+    }
+}
+
+void SchalterSet::tick() {
+    std::map<State, size_t> states;
+    const bool activate = has_activation_requests() && is_ok();
+
+    for (AbstractSchalter * schalter : schalters) {
+        schalter->tick();
+        states[schalter->get_state()] += 1;
+        schalter->set_request(this, activate);
+    }
+
+    if (states[State::error]) {
+        // if any element is in error state, we're in error state too
+        set_state(State::error);
+    } else if (states[State::init]) {
+        // if any element is in init state (but no errors), we're in init state too
+        set_state(State::init);
+    } else if (has_activation_requests() && states[State::active]) {
+        // at least one active element
+        set_state(State::active);
+    } else if (!has_activation_requests() && (states[State::inactive] == schalters.size())) {
+        // only inactive elements, means we're inactive too
+        set_state(State::inactive);
+    } else {
+        // states are different, we're transitioning
+        set_state(has_activation_requests() ? State::activating : State::deactivating);
+    }
+}
+
+AbstractSchalter * get_schalter(const JsonVariantConst & json) {
+
+    std::list<AbstractSchalter *> elements;
+    for (const JsonVariantConst & value : json["elements"].as<JsonArrayConst>()) {
+        AbstractSchalter * element = get_schalter(value);
+        if (element) {
+            elements.push_back(element);
         }
     }
 
-    auto schalter = new Schalter(address, index, switch_time_millis);
-    schalters.push_back(schalter);
+    const String type = json["type"] | "schalter";
 
-    return schalter;
+    if (type == "schalter") {
+        const String address = json["address"] | "";
+        const unsigned int index = json["index"] | 0;
+        const unsigned long switch_time_millis = (json["switch_time"] | 180) * 1000;
+
+        if (address.length() == 0) {
+            return nullptr;
+        }
+
+        for (auto schalter : schalters) {
+            if ((schalter->address == address) && (schalter->index == index)) {
+                return schalter;
+            }
+        }
+        auto schalter = new Schalter(address, index, switch_time_millis);
+        schalters.push_back(schalter);
+
+        return schalter;
+    } else if (type == "sequence") {
+        return new SchalterSequence(elements);
+    } else if (type == "set") {
+        return new SchalterSet(elements);
+    } else {
+        return nullptr;
+    }
+
 }

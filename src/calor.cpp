@@ -54,7 +54,7 @@ Zone * find_zone_by_name(const String & name) {
 }
 
 DynamicJsonDocument get_config() {
-    DynamicJsonDocument json(3 * 1024);
+    DynamicJsonDocument json(5 * 1024);
 
     auto zone_config = json["zones"].to<JsonObject>();
     for (const auto & zone : zones) {
@@ -141,7 +141,7 @@ void setup_wifi() {
 void setup_server() {
 
     server.on("/zones", HTTP_GET, [] {
-        StaticJsonDocument<1024> json;
+        DynamicJsonDocument json(5 * 1024);
 
         for (const auto & zone : zones) {
             json[zone->name] = zone->get_status();
@@ -203,7 +203,7 @@ void setup() {
     LittleFS.begin();
 
     {
-        const auto config = PicoUtils::JsonConfigFile<DynamicJsonDocument>(LittleFS, FPSTR(CONFIG_FILE), 3 * 1024);
+        const auto config = PicoUtils::JsonConfigFile<DynamicJsonDocument>(LittleFS, FPSTR(CONFIG_FILE), 5 * 1024);
 
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
             Zone * zone = new Zone(kv.key().c_str(), kv.value());
