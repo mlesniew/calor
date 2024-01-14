@@ -1,3 +1,6 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+
 #include <PicoMQTT.h>
 #include <PicoSyslog.h>
 
@@ -68,11 +71,108 @@ DynamicJsonDocument KelvinSensor::get_config() const {
     return json;
 }
 
+double CelsiusDevice::get_reading(const String & name) const {
+    const auto it = readings.find(name);
+    if (it != readings.end()) {
+        return it->second;
+    } else {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+}
+
+void CelsiusDevice::periodic_proc() {
+    const String uri = "http://" + address + "/temperature.json";
+
+    syslog.printf("Updating Celsius %s (%s)...\n", address.c_str(), uri.c_str());
+
+    readings.clear();
+    if (WiFi.status() != WL_CONNECTED) {
+        syslog.printf("Celsius %s update failed: no WiFi connection.\n", address.c_str());
+        return;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+
+    // this disables chunked transfer encoding
+    http.useHTTP10(true);
+
+    // set timeout
+    client.setTimeout(5000);
+
+    if (!http.begin(client, uri.c_str())) {
+        syslog.printf("Celsius %s update failed: connection error.\n", address.c_str());
+        return;
+    }
+
+    const int code = http.GET();
+    syslog.printf("Celsius %s responded with code %i.\n", address.c_str(), code);
+
+    if (!code) {
+        return;
+    }
+
+    if (code >= 200 && code < 300) {
+        StaticJsonDocument<256> doc;
+
+        DeserializationError error = deserializeJson(doc, http.getStream());
+
+        if (error) {
+            syslog.printf("Celsius %s update failed: JSON parsing failed.\n", address.c_str());
+            syslog.println(error.f_str());
+        } else {
+            for (JsonPair kv : doc.as<JsonObject>()) {
+                const String key{kv.key().c_str()};
+                const double value = kv.value().as<double>();
+                readings[key] = value;
+                syslog.printf("  %s = %.2f\n", key.c_str(), value);
+            }
+        }
+    }
+
+    http.end();
+}
+
+CelsiusDevice & CelsiusSensor::get_device(const String & address) {
+    static std::list<CelsiusDevice> devices;
+
+    for (auto & dev : devices) {
+        if (dev.address == address) {
+            return dev;
+        }
+    }
+    // not found, create one
+    devices.push_back(CelsiusDevice(address));
+    return devices.back();
+}
+
+CelsiusSensor::CelsiusSensor(const String & address, const String & name): name(name), device(get_device(address)) {
+}
+
+void CelsiusSensor::tick() {
+    device.tick();
+    set_state(std::isnan(device.get_reading(name)) ? State::error : State::ok);
+}
+
+double CelsiusSensor::get_reading() const {
+    return device.get_reading(name);
+}
+
+DynamicJsonDocument CelsiusSensor::get_config() const {
+    DynamicJsonDocument json(64);
+    json["type"] = "celsius";
+    json["address"] = device.address;
+    json["name"] = name;
+    return json;
+}
+
 Sensor * create_sensor(const JsonVariantConst & json) {
     if (json.is<const char *>()) {
         return new KelvinSensor(json.as<const char *>());
     } else if (json["type"] == "kelvin") {
         return new KelvinSensor(json["address"] | "");
+    } else if (json["type"] == "celsius") {
+        return new CelsiusSensor(json["address"] | "", json["name"] | "");
     } else {
         return new DummySensor();
     }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <list>
+
 #include <ArduinoJson.h>
 #include <PicoUtils.h>
 
@@ -46,6 +48,33 @@ class KelvinSensor: public Sensor {
 
     protected:
         PicoUtils::TimedValue<double> reading;
+};
+
+class CelsiusDevice: public PicoUtils::Periodic {
+    public:
+        CelsiusDevice(const String & address): PicoUtils::Periodic(60, 30), address(address) {}
+
+        void periodic_proc() override;
+        double get_reading(const String & name) const;
+
+        const String address;
+    protected:
+        std::map<String, double> readings;
+};
+
+class CelsiusSensor: public Sensor {
+    public:
+        CelsiusSensor(const String & address, const String & name);
+        void tick() override;
+        virtual String str() const override { return "celsius/" + device.address + "/" + name; }
+        double get_reading() const override;
+        DynamicJsonDocument get_config() const override;
+
+        const String name;
+    protected:
+        CelsiusDevice & device;
+
+        static CelsiusDevice & get_device(const String & address);
 };
 
 const char * to_c_str(const Sensor::State & s);
