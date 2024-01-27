@@ -1,13 +1,13 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
-#include <PicoMQTT.h>
+#include <PicoMQ.h>
 #include <PicoSyslog.h>
 
 #include "sensor.h"
 
 extern PicoSyslog::Logger syslog;
-extern PicoMQTT::Server mqtt;
+extern PicoMQ picomq;
 
 const char * to_c_str(const Sensor::State & s) {
     switch (s) {
@@ -44,7 +44,7 @@ KelvinSensor::KelvinSensor(const String & address)
 
     String addr = address;
     addr.toLowerCase();
-    mqtt.subscribe("celsius/+/" + addr, [this](const char *, Stream & stream) {
+    picomq.subscribe("celsius/+/" + addr, [this](const char *, const char * stream) {
         StaticJsonDocument<512> json;
         if (deserializeJson(json, stream) || !json.containsKey("temperature")) {
             return;

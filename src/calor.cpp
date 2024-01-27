@@ -9,6 +9,7 @@
 #include <uri/UriRegex.h>
 
 #include <ArduinoJson.h>
+#include <PicoMQ.h>
 #include <PicoMQTT.h>
 #include <PicoPrometheus.h>
 #include <PicoSyslog.h>
@@ -17,7 +18,7 @@
 #include "hass.h"
 #include "zone.h"
 
-PicoMQTT::Server mqtt;
+PicoMQ picomq;
 
 PicoPrometheus::Registry prometheus;
 
@@ -243,7 +244,7 @@ void setup() {
     tickables.push_back(&led_blinker);
 
     setup_server();
-    mqtt.begin();
+    picomq.begin();
     HomeAssistant::init();
 
     ArduinoOTA.setHostname(hostname.c_str());
@@ -253,7 +254,7 @@ void setup() {
 void loop() {
     ArduinoOTA.handle();
     server.handleClient();
-    mqtt.loop();
+    picomq.loop();
     for (auto & tickable : tickables) { tickable->tick(); }
     HomeAssistant::tick();
 }

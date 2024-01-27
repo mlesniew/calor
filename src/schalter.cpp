@@ -1,10 +1,10 @@
-#include <PicoMQTT.h>
+#include <PicoMQ.h>
 #include <PicoSyslog.h>
 
 #include "schalter.h"
 
 extern PicoSyslog::Logger syslog;
-extern PicoMQTT::Server mqtt;
+extern PicoMQ picomq;
 
 namespace {
 std::list<Schalter *> schalters;
@@ -36,7 +36,7 @@ Schalter::Schalter(const String address, const unsigned int index, const unsigne
         return;
     }
 
-    mqtt.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
+    picomq.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
         syslog.printf("Got update on valve %s: %s\n", str().c_str(), payload.c_str());
         if (payload == "ON") {
             is_active = true;
@@ -66,7 +66,7 @@ void Schalter::tick() {
     const bool is_error = is_active.elapsed_millis() >= 2 * 60 * 1000;
 
     if (address.length() && ((last_request.elapsed_millis() >= 15 * 1000) || (last_request != activate))) {
-        mqtt.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
+        picomq.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
         last_request = activate;
     }
 
