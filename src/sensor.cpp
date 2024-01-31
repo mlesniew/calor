@@ -44,12 +44,8 @@ KelvinSensor::KelvinSensor(const String & address)
 
     String addr = address;
     addr.toLowerCase();
-    picomq.subscribe("celsius/+/" + addr, [this](const char *, const char * stream) {
-        StaticJsonDocument<512> json;
-        if (deserializeJson(json, stream) || !json.containsKey("temperature")) {
-            return;
-        }
-        reading = json["temperature"].as<double>();
+    picomq.subscribe("celsius/+/" + addr + "/temperature", [this](const char *, String payload) {
+        reading = payload.toDouble();
         Serial.printf("Temperature update for sensor %s: %.2f ºC\n", this->address.c_str(), (double) reading);
         set_state(State::ok);
     });
