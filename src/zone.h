@@ -4,7 +4,7 @@
 #include <PicoUtils.h>
 
 class AbstractSchalter;
-class Sensor;
+class AbstractSensor;
 
 class Zone: public PicoUtils::Tickable {
     public:
@@ -37,6 +37,6 @@ class Zone: public PicoUtils::Tickable {
 
     private:
         State state;
-        Sensor * sensor;
+        AbstractSensor * sensor;
         AbstractSchalter * valve;
 };

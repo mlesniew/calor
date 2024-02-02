@@ -80,12 +80,12 @@ void Zone::tick() {
         state = new_state;
     };
 
-    if (sensor->get_state() == Sensor::State::error || (valve && valve->get_state() == Schalter::State::error)) {
+    if (sensor->get_state() == AbstractSensor::State::error || (valve && valve->get_state() == Schalter::State::error)) {
         set_state(State::error);
         return;
     }
 
-    if (sensor->get_state() == Sensor::State::init || (valve && valve->get_state() == Schalter::State::init)) {
+    if (sensor->get_state() == AbstractSensor::State::init || (valve && valve->get_state() == Schalter::State::init)) {
         if (state != State::init) {
             set_state(State::init);
         }
