@@ -70,7 +70,6 @@ class SchalterSet: public SchalterGroup {
 
 class Schalter: public AbstractSchalter {
     public:
-
         Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis);
         String str() const override { return address + "/" + String(index); }
 

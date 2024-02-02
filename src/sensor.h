@@ -50,5 +50,19 @@ class Sensor: public AbstractSensor {
         PicoUtils::TimedValue<double> reading;
 };
 
+class SensorChain: public AbstractSensor {
+    public:
+        SensorChain();
+        SensorChain(const std::list<AbstractSensor *> sensors) : sensors(sensors) {}
+
+        void tick() override;
+        virtual String str() const override;
+        double get_reading() const override;
+        JsonDocument get_config() const override;
+
+    protected:
+        const std::list<AbstractSensor *> sensors;
+};
+
 const char * to_c_str(const AbstractSensor::State & s);
-AbstractSensor * create_sensor(const JsonVariantConst & json);
+AbstractSensor * get_sensor(const JsonVariantConst & json);

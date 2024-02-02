@@ -32,7 +32,7 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
       desired(json["desired"] | 21),
       hysteresis(json["hysteresis"] | 0.5),
       state(State::init),
-      sensor(create_sensor(json["sensor"])),
+      sensor(get_sensor(json["sensor"])),
       valve(get_schalter(json["valve"])) {
 
     // setup metrics

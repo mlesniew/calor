@@ -9,6 +9,10 @@
 extern PicoSyslog::Logger syslog;
 extern PicoMQ picomq;
 
+namespace {
+std::list<Sensor *> sensors;
+}
+
 const char * to_c_str(const AbstractSensor::State & s) {
     switch (s) {
         case AbstractSensor::State::init:
@@ -64,11 +68,71 @@ JsonDocument Sensor::get_config() const {
     return json;
 }
 
-AbstractSensor * create_sensor(const JsonVariantConst & json) {
+void SensorChain::tick() {
+    State new_state = State::error;
+    for (AbstractSensor * sensor : sensors) {
+        sensor->tick();
+        if (new_state == State::error) {
+            new_state = sensor->get_state();
+        }
+    }
+    set_state(new_state);
+}
+
+double SensorChain::get_reading() const {
+    for (AbstractSensor * sensor : sensors) {
+        if (sensor->get_state() == State::ok) {
+            return sensor->get_reading();
+        }
+    }
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
+String SensorChain::str() const {
+    String ret;
+    bool first = true;
+    for (AbstractSensor * sensor : sensors) {
+        if (first) {
+            ret = sensor->str();
+            first = false;
+        } else {
+            ret = ret + ", " + sensor->str();
+        }
+    };
+    return "[" + ret + "]";
+}
+
+JsonDocument SensorChain::get_config() const {
+    JsonDocument json;
+    unsigned int idx = 0;
+    for (AbstractSensor * sensor : sensors) {
+        json[idx++] = sensor->get_config();
+    }
+    return json;
+}
+
+AbstractSensor * get_sensor(const JsonVariantConst & json) {
     if (json.is<const char *>()) {
-        return new Sensor(json.as<const char *>());
-    } else if (json["type"] == "kelvin") {
-        return new Sensor(json["address"] | "");
+        const String address = json.as<const char *>();
+
+        for (auto sensor : sensors) {
+            if ((sensor->address == address)) {
+                return sensor;
+            }
+        }
+        auto sensor = new Sensor(address);
+        sensors.push_back(sensor);
+
+        return sensor;
+    } else if (json.is<JsonArrayConst>()) {
+        std::list<AbstractSensor *> elements;
+        for (const JsonVariantConst & value : json.as<JsonArrayConst>()) {
+            AbstractSensor * element = get_sensor(value);
+            if (element) {
+                elements.push_back(element);
+            }
+        }
+        return new SensorChain(elements);
     } else {
         return new DummySensor();
     }
