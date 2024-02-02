@@ -20,7 +20,7 @@ class AbstractSchalter: public PicoUtils::Tickable {
         AbstractSchalter(): state(State::init) {}
 
         virtual String str() const = 0;
-        virtual DynamicJsonDocument get_config() const = 0;
+        virtual JsonDocument get_config() const = 0;
 
         void set_request(const void * requester, bool requesting);
 
@@ -43,7 +43,7 @@ class SchalterGroup: public AbstractSchalter {
             : schalters(schalters) {}
 
         String str() const override;
-        DynamicJsonDocument get_config() const override;
+        JsonDocument get_config() const override;
 
     protected:
         virtual String get_group_type() const = 0;
@@ -79,7 +79,7 @@ class Schalter: public AbstractSchalter {
         const unsigned long switch_time_millis;
 
         void tick() override;
-        DynamicJsonDocument get_config() const override;
+        JsonDocument get_config() const override;
 
     protected:
         PicoUtils::TimedValue<bool> is_active;

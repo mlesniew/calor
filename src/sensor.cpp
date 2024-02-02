@@ -34,8 +34,8 @@ DummySensor::DummySensor() {
 
 void DummySensor::tick() {}
 
-DynamicJsonDocument DummySensor::get_config() const {
-    DynamicJsonDocument json(0);
+JsonDocument DummySensor::get_config() const {
+    JsonDocument json;
     return json;
 }
 
@@ -58,8 +58,8 @@ void Sensor::tick() {
 
 double Sensor::get_reading() const { return reading; }
 
-DynamicJsonDocument Sensor::get_config() const {
-    DynamicJsonDocument json(64);
+JsonDocument Sensor::get_config() const {
+    JsonDocument json;
     json.set(address);
     return json;
 }

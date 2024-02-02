@@ -22,8 +22,8 @@ class Zone: public PicoUtils::Tickable {
         void tick();
         bool heat() const;
 
-        DynamicJsonDocument get_config() const;
-        DynamicJsonDocument get_status() const;
+        JsonDocument get_config() const;
+        JsonDocument get_status() const;
         double get_reading() const;
         State get_state() const;
 

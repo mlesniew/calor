@@ -111,8 +111,8 @@ void Schalter::tick() {
     }
 }
 
-DynamicJsonDocument Schalter::get_config() const {
-    DynamicJsonDocument json(256);
+JsonDocument Schalter::get_config() const {
+    JsonDocument json;
     json["address"] = address;
     json["index"] = index;
     json["switch_time"] = switch_time_millis / 1000;
@@ -133,8 +133,8 @@ String SchalterGroup::str() const {
     return get_group_type() + ":[" + ret + "]";
 }
 
-DynamicJsonDocument SchalterGroup::get_config() const {
-    DynamicJsonDocument json(1024);
+JsonDocument SchalterGroup::get_config() const {
+    JsonDocument json;
     json["type"] = get_group_type();
     size_t idx = 0;
     for (AbstractSchalter * schalter : schalters) {

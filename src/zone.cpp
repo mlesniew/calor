@@ -109,8 +109,8 @@ bool Zone::heat() const {
     return enabled && (state == State::heat) && (!valve || (valve->get_state() == Schalter::State::active));
 }
 
-DynamicJsonDocument Zone::get_config() const {
-    DynamicJsonDocument json(512);
+JsonDocument Zone::get_config() const {
+    JsonDocument json;
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;
@@ -123,8 +123,8 @@ DynamicJsonDocument Zone::get_config() const {
     return json;
 }
 
-DynamicJsonDocument Zone::get_status() const {
-    DynamicJsonDocument json(256);
+JsonDocument Zone::get_status() const {
+    JsonDocument json;
 
     json["desired"] = desired;
     json["hysteresis"] = hysteresis;

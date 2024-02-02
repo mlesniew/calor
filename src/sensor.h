@@ -18,7 +18,7 @@ class AbstractSensor: public PicoUtils::Tickable {
         virtual String str() const = 0;
         virtual double get_reading() const { return std::numeric_limits<double>::quiet_NaN(); }
         State get_state() const { return state; }
-        virtual DynamicJsonDocument get_config() const = 0;
+        virtual JsonDocument get_config() const = 0;
 
     protected:
         void set_state(State new_state);
@@ -32,7 +32,7 @@ class DummySensor: public AbstractSensor {
         DummySensor();
         void tick() override;
         virtual String str() const override { return "dummy"; }
-        DynamicJsonDocument get_config() const override;
+        JsonDocument get_config() const override;
 };
 
 class Sensor: public AbstractSensor {
@@ -42,7 +42,7 @@ class Sensor: public AbstractSensor {
         void tick() override;
         virtual String str() const override { return address; }
         double get_reading() const override;
-        DynamicJsonDocument get_config() const override;
+        JsonDocument get_config() const override;
 
         const String address;
 

@@ -69,7 +69,7 @@ void autodiscovery() {
 
         const String topic_base = "calor/" + board_id + "/" + zone.unique_id();
 
-        StaticJsonDocument<1024> json;
+        JsonDocument json;
 
         json["unique_id"] = unique_id;
         json["name"] = "Calor " + String(zone.name);
@@ -116,7 +116,7 @@ void autodiscovery() {
 
     for (const auto & binary_sensor : binary_sensors) {
         const auto unique_id = board_unique_id + "-" + binary_sensor.name;
-        StaticJsonDocument<1024> json;
+        JsonDocument json;
         json["unique_id"] = unique_id;
         json["object_id"] = String("calor_") + binary_sensor.name;
         json["name"] = binary_sensor.friendly_name;
