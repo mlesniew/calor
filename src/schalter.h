@@ -80,6 +80,9 @@ class Schalter: public AbstractSchalter {
         void tick() override;
         JsonDocument get_config() const override;
 
+        unsigned long get_last_request_elapsed_millis() const { return last_request.elapsed_millis(); }
+        void publish_request();
+
     protected:
         PicoUtils::TimedValue<bool> is_active;
         PicoUtils::TimedValue<bool> last_request;
@@ -87,3 +90,4 @@ class Schalter: public AbstractSchalter {
 
 const char * to_c_str(const Schalter::State & s);
 AbstractSchalter * get_schalter(const JsonVariantConst & json);
+void publish_schalter_requests();

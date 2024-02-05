@@ -7,7 +7,19 @@ extern PicoSyslog::Logger syslog;
 extern PicoMQ picomq;
 
 namespace {
+
 std::list<Schalter *> schalters;
+PicoUtils::PeriodicRun request_publisher(15, [] {
+    // find element for which a request was sent last
+    auto it = std::max_element(schalters.begin(), schalters.end(), [](const auto & lhs, const auto & rhs) {
+        return lhs->get_last_request_elapsed_millis() < rhs->get_last_request_elapsed_millis();
+    });
+
+    if (it != schalters.end()) {
+        (*it)->publish_request();
+    }
+});
+
 }
 
 const char * to_c_str(const Schalter::State & s) {
@@ -61,13 +73,20 @@ void AbstractSchalter::set_request(const void * requester, bool requesting) {
     if (requesting) { requesters.insert(requester); } else { requesters.erase(requester); }
 }
 
+void Schalter::publish_request() {
+    if (address.length()) {
+        const bool activate = has_activation_requests();
+        picomq.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
+        last_request = activate;
+    }
+}
+
 void Schalter::tick() {
     const bool activate = has_activation_requests();
     const bool is_error = is_active.elapsed_millis() >= 2 * 60 * 1000;
 
-    if (address.length() && ((last_request.elapsed_millis() >= 15 * 1000) || (last_request != activate))) {
-        picomq.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
-        last_request = activate;
+    if (last_request != activate) {
+        publish_request();
     }
 
     if (is_error) {
@@ -228,6 +247,7 @@ AbstractSchalter * get_schalter(const JsonVariantConst & json) {
         }
         auto schalter = new Schalter(address, index, switch_time_millis);
         schalters.push_back(schalter);
+        request_publisher.interval_millis = 15000 / schalters.size();
 
         return schalter;
     } else if (type == "sequence") {
@@ -237,5 +257,8 @@ AbstractSchalter * get_schalter(const JsonVariantConst & json) {
     } else {
         return nullptr;
     }
+}
 
+void publish_schalter_requests() {
+    request_publisher.tick();
 }

@@ -15,6 +15,7 @@
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
 
+#include "schalter.h"
 #include "hass.h"
 #include "zone.h"
 
@@ -257,4 +258,5 @@ void loop() {
     picomq.loop();
     for (auto & tickable : tickables) { tickable->tick(); }
     HomeAssistant::tick();
+    publish_schalter_requests();
 }
