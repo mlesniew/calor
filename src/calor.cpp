@@ -244,6 +244,10 @@ void setup() {
     tickables.push_back(&healthcheck);
     tickables.push_back(&led_blinker);
 
+    picomq.subscribe("calor/ping", [](const char * payload) {
+            picomq.publish("calor/pong", payload);
+            });
+
     setup_server();
     picomq.begin();
     HomeAssistant::init();
