@@ -2,12 +2,14 @@
 #include <ESP8266HTTPClient.h>
 
 #include <PicoMQ.h>
+#include <PicoMQTT.h>
 #include <PicoSyslog.h>
 
 #include "sensor.h"
 
 extern PicoSyslog::Logger syslog;
 extern PicoMQ picomq;
+extern PicoMQTT::Server mqtt;
 
 namespace {
 std::list<Sensor *> sensors;
@@ -46,15 +48,19 @@ JsonDocument DummySensor::get_config() const {
 Sensor::Sensor(const String & address)
     : address(address), reading(std::numeric_limits<double>::quiet_NaN()) {
 
-    picomq.subscribe("celsius/+/" + address + "/temperature", [this](const char *, String payload) {
+    const String topic = "celsius/+/" + address + "/temperature";
+    const auto handler = [this](const char *, String payload) {
         reading = payload.toDouble();
         Serial.printf("Temperature update for sensor %s: %.2f ºC\n", this->address.c_str(), (double) reading);
         set_state(State::ok);
-    });
+    };
+
+    picomq.subscribe(topic, handler);
+    mqtt.subscribe(topic, handler);
 }
 
 void Sensor::tick() {
-    if (reading.elapsed_millis() >= 2 * 60 * 1000) {
+    if (reading.elapsed_millis() >= 5 * 60 * 1000) {
         set_state(State::error);
         reading = std::numeric_limits<double>::quiet_NaN();
     }

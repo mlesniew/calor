@@ -20,6 +20,7 @@
 #include "zone.h"
 
 PicoMQ picomq;
+PicoMQTT::Server mqtt;
 
 PicoPrometheus::Registry prometheus;
 
@@ -244,12 +245,9 @@ void setup() {
     tickables.push_back(&healthcheck);
     tickables.push_back(&led_blinker);
 
-    picomq.subscribe("calor/ping", [](const char * payload) {
-            picomq.publish("calor/pong", payload);
-            });
-
     setup_server();
     picomq.begin();
+    mqtt.begin();
     HomeAssistant::init();
 
     ArduinoOTA.setHostname(hostname.c_str());
@@ -260,6 +258,7 @@ void loop() {
     ArduinoOTA.handle();
     server.handleClient();
     picomq.loop();
+    mqtt.loop();
     for (auto & tickable : tickables) { tickable->tick(); }
     HomeAssistant::tick();
     publish_schalter_requests();

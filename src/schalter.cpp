@@ -1,15 +1,15 @@
-#include <PicoMQ.h>
+#include <PicoMQTT.h>
 #include <PicoSyslog.h>
 
 #include "schalter.h"
 
 extern PicoSyslog::Logger syslog;
-extern PicoMQ picomq;
+extern PicoMQTT::Server mqtt;
 
 namespace {
 
 std::list<Schalter *> schalters;
-PicoUtils::PeriodicRun request_publisher(15, [] {
+PicoUtils::PeriodicRun request_publisher(60, [] {
     // find element for which a request was sent last
     auto it = std::max_element(schalters.begin(), schalters.end(), [](const auto & lhs, const auto & rhs) {
         return lhs->get_last_request_elapsed_millis() < rhs->get_last_request_elapsed_millis();
@@ -48,7 +48,7 @@ Schalter::Schalter(const String address, const unsigned int index, const unsigne
         return;
     }
 
-    picomq.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
+    mqtt.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
         syslog.printf("Got update on valve %s: %s\n", str().c_str(), payload.c_str());
         if (payload == "ON") {
             is_active = true;
@@ -76,7 +76,7 @@ void AbstractSchalter::set_request(const void * requester, bool requesting) {
 void Schalter::publish_request() {
     if (address.length()) {
         const bool activate = has_activation_requests();
-        picomq.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
+        mqtt.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
         last_request = activate;
     }
 }
@@ -247,7 +247,7 @@ AbstractSchalter * get_schalter(const JsonVariantConst & json) {
         }
         auto schalter = new Schalter(address, index, switch_time_millis);
         schalters.push_back(schalter);
-        request_publisher.interval_millis = 15000 / schalters.size();
+        request_publisher.interval_millis = 60000 / schalters.size();
 
         return schalter;
     } else if (type == "sequence") {
