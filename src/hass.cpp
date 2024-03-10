@@ -226,6 +226,10 @@ void tick() {
     for (auto & watch : watches) { watch->tick(); }
 }
 
+bool connected() {
+    return mqtt.connected();
+}
+
 bool healthcheck() {
     return !mqtt.host.length() || !mqtt.port || mqtt.connected();
 }

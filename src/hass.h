@@ -8,5 +8,6 @@ extern PicoMQTT::Client mqtt;
 void init();
 void tick();
 bool healthcheck();
+bool connected();
 
 };
