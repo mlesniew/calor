@@ -72,7 +72,7 @@ void autodiscovery() {
         JsonDocument json;
 
         json["unique_id"] = unique_id;
-        json["name"] = "Calor " + String(zone.name);
+        json["name"] = nullptr;
         json["availability_topic"] = mqtt.will.topic;
 
         json["temperature_unit"] = "C";
@@ -91,7 +91,7 @@ void autodiscovery() {
         json["retain"] = true;
 
         auto device = json["device"];
-        device["name"] = json["name"];
+        device["name"] = "Calor " + zone.name;
         device["suggested_area"] = zone.name;
         device["identifiers"][0] = unique_id;
         device["via_device"] = board_unique_id;
