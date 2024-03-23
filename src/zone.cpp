@@ -29,7 +29,7 @@ const char * to_c_str(const Zone::State & s) {
 Zone::Zone(const String & name, const JsonVariantConst & json)
     : name(name),
       enabled(json["enabled"] | true),
-      desired(json["desired"] | 21),
+      desired(json["desired"] | 21.0),
       hysteresis(json["hysteresis"] | 0.5),
       state(State::init),
       sensor(get_sensor(json["sensor"])),
