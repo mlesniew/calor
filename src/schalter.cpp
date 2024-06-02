@@ -39,17 +39,16 @@ const char * to_c_str(const Schalter::State & s) {
     }
 }
 
-Schalter::Schalter(const String address, const unsigned int index, const unsigned long switch_time_millis)
-    : address(address), index(index), switch_time_millis(switch_time_millis),
-      is_active(false), last_request(false) {
+Schalter::Schalter(const String & name, const unsigned long switch_time_millis)
+    : name(name), switch_time_millis(switch_time_millis), is_active(false), last_request(false) {
 
-    if (!address.length()) {
+    if (!name.length()) {
         set_state(State::error);
         return;
     }
 
-    mqtt.subscribe("schalter/" + address + "/" + String(index), [this](const String & payload) {
-        syslog.printf("Got update on valve %s: %s\n", str().c_str(), payload.c_str());
+    mqtt.subscribe("schalter/" + name, [this](const String & payload) {
+        syslog.printf("Got update on valve %s: %s\n", this->name.c_str(), payload.c_str());
         if (payload == "ON") {
             is_active = true;
             tick();
@@ -74,9 +73,9 @@ void AbstractSchalter::set_request(const void * requester, bool requesting) {
 }
 
 void Schalter::publish_request() {
-    if (address.length()) {
+    if (name.length()) {
         const bool activate = has_activation_requests();
-        mqtt.publish("schalter/" + address + "/" + String(index) + "/set", activate ? "ON" : "OFF");
+        mqtt.publish("schalter/" + name + "/set", activate ? "ON" : "OFF");
         last_request = activate;
     }
 }
@@ -132,8 +131,7 @@ void Schalter::tick() {
 
 JsonDocument Schalter::get_config() const {
     JsonDocument json;
-    json["address"] = address;
-    json["index"] = index;
+    json["name"] = name;
     json["switch_time"] = switch_time_millis / 1000;
     return json;
 }
@@ -219,7 +217,37 @@ void SchalterSet::tick() {
     }
 }
 
+AbstractSchalter * get_schalter(const String & name, const unsigned long switch_time_millis) {
+    if (name.length() == 0) {
+        return nullptr;
+    }
+
+    for (auto schalter : schalters) {
+        if (schalter->name == name) {
+            return schalter;
+        }
+    }
+
+    auto schalter = new Schalter(name, switch_time_millis);
+    schalters.push_back(schalter);
+    request_publisher.interval_millis = 60000 / schalters.size();
+
+    return schalter;
+}
+
 AbstractSchalter * get_schalter(const JsonVariantConst & json) {
+
+    if (json.is<String>()) {
+        return get_schalter(json.as<String>(), 180 * 1000);
+    }
+
+    const String type = json["type"] | "schalter";
+
+    if (type == "schalter") {
+        const String name = json["name"] | "";
+        const unsigned long switch_time_millis = (json["switch_time"] | 180) * 1000;
+        return get_schalter(name, switch_time_millis);
+    }
 
     std::list<AbstractSchalter *> elements;
     for (const JsonVariantConst & value : json["elements"].as<JsonArrayConst>()) {
@@ -229,28 +257,7 @@ AbstractSchalter * get_schalter(const JsonVariantConst & json) {
         }
     }
 
-    const String type = json["type"] | "schalter";
-
-    if (type == "schalter") {
-        const String address = json["address"] | "";
-        const unsigned int index = json["index"] | 0;
-        const unsigned long switch_time_millis = (json["switch_time"] | 180) * 1000;
-
-        if (address.length() == 0) {
-            return nullptr;
-        }
-
-        for (auto schalter : schalters) {
-            if ((schalter->address == address) && (schalter->index == index)) {
-                return schalter;
-            }
-        }
-        auto schalter = new Schalter(address, index, switch_time_millis);
-        schalters.push_back(schalter);
-        request_publisher.interval_millis = 60000 / schalters.size();
-
-        return schalter;
-    } else if (type == "sequence") {
+    if (type == "sequence") {
         return new SchalterSequence(elements);
     } else if (type == "set") {
         return new SchalterSet(elements);
