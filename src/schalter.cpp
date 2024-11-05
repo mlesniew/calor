@@ -9,16 +9,6 @@ extern PicoMQTT::Server mqtt;
 namespace {
 
 std::list<Schalter *> schalters;
-PicoUtils::PeriodicRun request_publisher(60, [] {
-    // find element for which a request was sent last
-    auto it = std::max_element(schalters.begin(), schalters.end(), [](const auto & lhs, const auto & rhs) {
-        return lhs->get_last_request_elapsed_millis() < rhs->get_last_request_elapsed_millis();
-    });
-
-    if (it != schalters.end()) {
-        (*it)->publish_request();
-    }
-});
 
 }
 
@@ -39,8 +29,8 @@ const char * to_c_str(const Schalter::State & s) {
     }
 }
 
-Schalter::Schalter(const String & name, const unsigned long switch_time_millis)
-    : name(name), switch_time_millis(switch_time_millis), is_active(false), last_request(false) {
+Schalter::Schalter(const String & name)
+    : name(name), last_request(false) {
 
     if (!name.length()) {
         set_state(State::error);
@@ -50,11 +40,15 @@ Schalter::Schalter(const String & name, const unsigned long switch_time_millis)
     mqtt.subscribe("schalter/" + name, [this](const String & payload) {
         syslog.printf("Got update on valve %s: %s\n", this->name.c_str(), payload.c_str());
         if (payload == "ON") {
-            is_active = true;
-            tick();
+            set_state(State::active);
         } else if (payload == "OFF") {
-            is_active = false;
-            tick();
+            set_state(State::inactive);
+        } else if (payload == "TON") {
+            set_state(State::activating);
+        } else if (payload == "TOFF") {
+            set_state(State::deactivating);
+        } else {
+            syslog.printf("Invalid schalter state on valve %s: %s\n", this->name.c_str(), payload.c_str());
         }
     });
 
@@ -81,62 +75,27 @@ void Schalter::publish_request() {
 }
 
 void Schalter::tick() {
-    const bool activate = has_activation_requests();
-    const bool is_error = is_active.elapsed_millis() >= 2 * 60 * 1000;
-
-    if (last_request != activate) {
+    if ((last_request.elapsed_millis() >= 30 * 1000) || (last_request != has_activation_requests())) {
         publish_request();
     }
 
-    if (is_error) {
+    if (last_update.elapsed_millis() >= 2 * 60 * 1000) {
         set_state(State::error);
     }
+}
 
-    const bool output_active = bool(is_active);
-    const bool timeout = (get_state_time_millis() >= switch_time_millis);
-
-    switch (get_state()) {
-        case State::error:
-        case State::init:
-            if (!is_error) {
-                set_state(output_active ? State::activating : State::deactivating);
-            }
-            break;
-        case State::inactive:
-            if (output_active) {
-                set_state(State::activating);
-            }
-            break;
-        case State::active:
-            if (!output_active) {
-                set_state(State::deactivating);
-            }
-            break;
-        case State::deactivating:
-            if (output_active) {
-                set_state(State::activating);
-            } else if (timeout) {
-                set_state(State::inactive);
-            }
-            break;
-        case State::activating:
-            if (!output_active) {
-                set_state(State::deactivating);
-            } else if (timeout) {
-                set_state(State::active);
-            }
-            break;
-    }
+void Schalter::set_state(State new_state) {
+    last_update.reset();
+    AbstractSchalter::set_state(new_state);
 }
 
 JsonDocument Schalter::get_config() const {
     JsonDocument json;
-    json["name"] = name;
-    json["switch_time"] = switch_time_millis / 1000;
+    json = name;
     return json;
 }
 
-String SchalterGroup::str() const {
+String SchalterSet::str() const {
     String ret;
     bool first = true;
     for (AbstractSchalter * schalter : schalters) {
@@ -147,46 +106,16 @@ String SchalterGroup::str() const {
             ret = ret + ", " + schalter->str();
         }
     };
-    return get_group_type() + ":[" + ret + "]";
+    return "[" + ret + "]";
 }
 
-JsonDocument SchalterGroup::get_config() const {
+JsonDocument SchalterSet::get_config() const {
     JsonDocument json;
-    json["type"] = get_group_type();
     size_t idx = 0;
     for (AbstractSchalter * schalter : schalters) {
-        json["elements"][idx++] = schalter->get_config();
+        json[idx++] = schalter->get_config();
     }
     return json;
-}
-
-void SchalterSequence::tick() {
-    std::map<State, size_t> states;
-    bool activate_next = has_activation_requests() && is_ok();
-
-    for (AbstractSchalter * schalter : schalters) {
-        schalter->tick();
-        states[schalter->get_state()] += 1;
-        schalter->set_request(this, activate_next);
-        activate_next = activate_next && (schalter->get_state() == State::active);
-    }
-
-    if (states[State::error] > 0) {
-        // if any element is in error state, we're in error state too
-        set_state(State::error);
-    } else if (states[State::init]) {
-        // if any element is in init state (but no errors), we're in init state too
-        set_state(State::init);
-    } else if (has_activation_requests() && (states[State::active] == schalters.size())) {
-        // only active elements, means we're active too
-        set_state(State::active);
-    } else if (!has_activation_requests() && (states[State::inactive] == schalters.size())) {
-        // only inactive elements, means we're inactive too
-        set_state(State::inactive);
-    } else {
-        // states are different we're transitioning
-        set_state(has_activation_requests() ? State::activating : State::deactivating);
-    }
 }
 
 void SchalterSet::tick() {
@@ -217,7 +146,7 @@ void SchalterSet::tick() {
     }
 }
 
-AbstractSchalter * get_schalter(const String & name, const unsigned long switch_time_millis) {
+AbstractSchalter * get_schalter(const String & name) {
     if (name.length() == 0) {
         return nullptr;
     }
@@ -228,44 +157,25 @@ AbstractSchalter * get_schalter(const String & name, const unsigned long switch_
         }
     }
 
-    auto schalter = new Schalter(name, switch_time_millis);
+    auto schalter = new Schalter(name);
     schalters.push_back(schalter);
-    request_publisher.interval_millis = 60000 / schalters.size();
 
     return schalter;
 }
 
 AbstractSchalter * get_schalter(const JsonVariantConst & json) {
-
     if (json.is<String>()) {
-        return get_schalter(json.as<String>(), 180 * 1000);
-    }
-
-    const String type = json["type"] | "schalter";
-
-    if (type == "schalter") {
-        const String name = json["name"] | "";
-        const unsigned long switch_time_millis = (json["switch_time"] | 180) * 1000;
-        return get_schalter(name, switch_time_millis);
-    }
-
-    std::list<AbstractSchalter *> elements;
-    for (const JsonVariantConst & value : json["elements"].as<JsonArrayConst>()) {
-        AbstractSchalter * element = get_schalter(value);
-        if (element) {
-            elements.push_back(element);
+        return get_schalter(json.as<String>());
+    } else if (json.is<JsonArrayConst>()) {
+        std::list<AbstractSchalter *> elements;
+        for (const JsonVariantConst & value : json.as<JsonArrayConst>()) {
+            AbstractSchalter * element = get_schalter(value);
+            if (element) {
+                elements.push_back(element);
+            }
         }
-    }
-
-    if (type == "sequence") {
-        return new SchalterSequence(elements);
-    } else if (type == "set") {
         return new SchalterSet(elements);
     } else {
         return nullptr;
     }
-}
-
-void publish_schalter_requests() {
-    request_publisher.tick();
 }

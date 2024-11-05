@@ -217,5 +217,4 @@ void loop() {
     mqtt.loop();
     for (auto & tickable : tickables) { tickable->tick(); }
     HomeAssistant::tick();
-    publish_schalter_requests();
 }

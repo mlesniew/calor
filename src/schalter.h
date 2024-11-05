@@ -28,65 +28,46 @@ class AbstractSchalter: public PicoUtils::Tickable {
         bool is_ok() const { return state != State::error && state != State::init; }
 
     protected:
-        void set_state(State new_state);
+        virtual void set_state(State new_state);
         bool has_activation_requests() const { return !requesters.empty(); }
-        unsigned long get_state_time_millis() const { return state.elapsed_millis(); }
 
     private:
         std::set<const void *> requesters;
         PicoUtils::TimedValue<State> state;
 };
 
-class SchalterGroup: public AbstractSchalter {
+class SchalterSet: public AbstractSchalter {
     public:
-        SchalterGroup(const std::list<AbstractSchalter *> schalters)
+        SchalterSet(const std::list<AbstractSchalter *> schalters)
             : schalters(schalters) {}
 
         String str() const override;
         JsonDocument get_config() const override;
 
+        void tick() override;
+
     protected:
-        virtual String get_group_type() const = 0;
         const std::list<AbstractSchalter *> schalters;
-};
-
-class SchalterSequence: public SchalterGroup {
-    public:
-        using SchalterGroup::SchalterGroup;
-        void tick() override;
-
-    protected:
-        String get_group_type() const override { return "sequence"; }
-};
-
-class SchalterSet: public SchalterGroup {
-    public:
-        using SchalterGroup::SchalterGroup;
-        void tick() override;
-
-    protected:
-        String get_group_type() const override { return "set"; }
 };
 
 class Schalter: public AbstractSchalter {
     public:
-        Schalter(const String & name, const unsigned long switch_time_millis);
+        Schalter(const String & name);
         String str() const override { return name; }
 
         const String name;
-        const unsigned long switch_time_millis;
 
         void tick() override;
         JsonDocument get_config() const override;
 
-        unsigned long get_last_request_elapsed_millis() const { return last_request.elapsed_millis(); }
         void publish_request();
 
     protected:
-        PicoUtils::TimedValue<bool> is_active;
+        virtual void set_state(State new_state) override;
+
+        PicoUtils::Stopwatch last_update;
         PicoUtils::TimedValue<bool> last_request;
 };
 
 const char * to_c_str(const Schalter::State & s);
 AbstractSchalter * get_schalter(const JsonVariantConst & json);
-void publish_schalter_requests();
