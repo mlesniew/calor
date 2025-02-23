@@ -83,7 +83,7 @@ PicoPrometheus::Gauge health_gauge(prometheus, "health", "Board healthcheck", []
 PicoUtils::PeriodicRun healthcheck(5, [] {
     static PicoUtils::Stopwatch last_healthy;
 
-    healthy = (WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck();
+    healthy = ((WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck()) || (millis() <= 30 * 1000);
     for (auto & zone : zones) {
         healthy = healthy && zone->healthcheck();
     }
