@@ -30,6 +30,9 @@ class Zone: public PicoUtils::Tickable {
         String unique_id() const;
         bool healthcheck() const;
 
+        void boost(double timeout_seconds = 60 * 60);
+        bool boost_active() const;
+
         const String name;
         bool enabled;
         double desired;
@@ -39,4 +42,7 @@ class Zone: public PicoUtils::Tickable {
         State state;
         AbstractSensor * sensor;
         AbstractSchalter * valve;
+
+        double boost_timeout;
+        PicoUtils::Stopwatch boost_stopwatch;
 };

@@ -50,6 +50,12 @@ void notify_mode(const Zone & zone) {
                  0, true);
 }
 
+void notify_boost(const Zone & zone) {
+    mqtt.publish("calor/" + board_id + "/" + zone.unique_id() + "/boost",
+                 zone.boost_active() ? "ON" : "OFF",
+                 0, true);
+}
+
 void notify_health() {
 }
 
@@ -74,6 +80,7 @@ void autodiscovery() {
         json["unique_id"] = unique_id;
         json["name"] = nullptr;
         json["availability_topic"] = mqtt.will.topic;
+        json["icon"] = "mdi:fire";
 
         json["temperature_unit"] = "C";
         json["min_temp"] = 7;
@@ -97,6 +104,32 @@ void autodiscovery() {
         device["via_device"] = board_unique_id;
 
         const String disco_topic = hass_autodiscovery_topic + "/climate/" + unique_id + "/config";
+        auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
+        serializeJson(json, publish);
+        publish.send();
+    }
+
+    for (const auto & zone_ptr : zones) {
+        const auto & zone = *zone_ptr;
+        const auto unique_id = board_unique_id + "-" + zone.unique_id();
+        const String topic_base = "calor/" + board_id + "/" + zone.unique_id();
+
+        JsonDocument json;
+        json["unique_id"] = unique_id + "-boost";
+        json["name"] = "Boost";
+        json["availability_topic"] = mqtt.will.topic;
+
+        json["command_topic"] = topic_base + "/boost/set";
+        json["state_topic"] = topic_base + "/boost";
+        json["icon"] = "mdi:thermometer-plus";
+
+        auto device = json["device"];
+        device["name"] = "Calor " + zone.name;
+        device["suggested_area"] = zone.name;
+        device["identifiers"][0] = unique_id;
+        device["via_device"] = board_unique_id;
+
+        const String disco_topic = hass_autodiscovery_topic + "/switch/" + unique_id + "-boost/config";
         auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
         serializeJson(json, publish);
         publish.send();
@@ -178,6 +211,14 @@ void init() {
             }
         });
 
+        mqtt.subscribe(topic_base + "/boost/set", [&zone](String payload) {
+            if (payload == "ON") {
+                zone.boost();
+            } else if (payload == "OFF") {
+                zone.boost(0);
+            }
+        });
+
         watches.push_back(
             new PicoUtils::Watch<double>(
                 [&zone] { return zone.get_reading(); },
@@ -197,6 +238,11 @@ void init() {
             new PicoUtils::Watch<bool>(
                 [&zone] { return zone.enabled; },
                 [&zone] { notify_mode(zone); }));
+
+        watches.push_back(
+            new PicoUtils::Watch<bool>(
+                [&zone] { return zone.boost_active(); },
+                [&zone] { notify_boost(zone); }));
     }
 
     watches.push_back(

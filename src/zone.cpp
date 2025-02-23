@@ -33,7 +33,8 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
       hysteresis(json["hysteresis"] | 0.5),
       state(State::init),
       sensor(get_sensor(json["sensor"])),
-      valve(get_schalter(json["valve"])) {
+      valve(get_schalter(json["valve"])),
+      boost_timeout(0) {
 
     // setup metrics
     static PicoPrometheus::Gauge zone_state(prometheus, "zone_state", "Zone state enum");
@@ -92,6 +93,11 @@ void Zone::tick() {
         return;
     }
 
+    if (boost_active()) {
+        set_state(State::heat);
+        return;
+    }
+
     // FSM inputs
     const bool warm = sensor->get_reading() >= desired + 0.5 * hysteresis;
     const bool cold = sensor->get_reading() <= desired - 0.5 * hysteresis;
@@ -132,6 +138,7 @@ JsonDocument Zone::get_status() const {
     json["reading"] = get_reading();
     json["state"] = to_c_str(state);
     json["sensor"] = to_c_str(sensor->get_state());
+    json["boost"] = boost_active();
     if (valve) {
         json["valve"] = to_c_str(valve->get_state());
     }
@@ -146,6 +153,15 @@ String Zone::unique_id() const {
 
 bool Zone::healthcheck() const {
     return state != State::error;
+}
+
+void Zone::boost(double timeout_seconds) {
+    boost_stopwatch.reset();
+    boost_timeout = timeout_seconds;
+}
+
+bool Zone::boost_active() const {
+    return boost_stopwatch.elapsed() < boost_timeout;
 }
 
 double Zone::get_reading() const {
