@@ -38,7 +38,7 @@ Schalter::Schalter(const String & name)
     }
 
     mqtt.subscribe("schalter/" + name, [this](const String & payload) {
-        syslog.printf("Got update on valve %s: %s\n", this->name.c_str(), payload.c_str());
+        Serial.printf("Got update on valve %s: %s\n", this->name.c_str(), payload.c_str());
         if (payload == "ON") {
             set_state(State::active);
         } else if (payload == "OFF") {
