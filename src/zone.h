@@ -34,6 +34,7 @@ class Zone: public PicoUtils::Tickable {
         bool boost_active() const;
 
         const String name;
+        const String slug;
         bool enabled;
         double desired;
         const double hysteresis;

@@ -12,6 +12,7 @@
 #include <PicoMQ.h>
 #include <PicoMQTT.h>
 #include <PicoPrometheus.h>
+#include <PicoSlugify.h>
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
 
@@ -175,7 +176,7 @@ void setup() {
         }
 
         syslog.server = config["syslog"] | "";
-        hostname = config["hostname"] | "calor";
+        hostname = PicoSlugify::slugify(config["hostname"] | "calor");
     }
 
     wifi_control.init(button);

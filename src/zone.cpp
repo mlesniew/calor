@@ -2,9 +2,10 @@
 #include <Arduino.h>
 #include <Hash.h>
 
-#include <PicoPrometheus.h>
-#include <PicoSyslog.h>
 #include <ArduinoJson.h>
+#include <PicoPrometheus.h>
+#include <PicoSlugify.h>
+#include <PicoSyslog.h>
 
 #include "sensor.h"
 #include "schalter.h"
@@ -28,6 +29,7 @@ const char * to_c_str(const Zone::State & s) {
 
 Zone::Zone(const String & name, const JsonVariantConst & json)
     : name(name),
+      slug(PicoSlugify::slugify(name)),
       enabled(json["enabled"] | true),
       desired(json["desired"] | 21.0),
       hysteresis(json["hysteresis"] | 0.5),
