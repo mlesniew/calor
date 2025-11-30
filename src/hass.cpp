@@ -4,6 +4,7 @@
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
 #include <ArduinoJson.h>
+#include <PicoSlugify.h>
 
 #include "hass.h"
 #include "zone.h"
@@ -72,13 +73,15 @@ void autodiscovery() {
     for (const auto & zone_ptr : zones) {
         const auto & zone = *zone_ptr;
         const auto unique_id = board_unique_id + "-" + zone.unique_id();
+        const auto name_slug = PicoSlugify::slugify(zone.name);
 
         const String topic_base = "calor/" + board_id + "/" + zone.unique_id();
 
         JsonDocument json;
 
         json["unique_id"] = unique_id;
-        json["name"] = nullptr;
+        json["name"] = "Calor " + zone.name;
+        json["default_entity_id"] = "climate.calor_" + name_slug;
         json["availability_topic"] = mqtt.will.topic;
         json["icon"] = "mdi:fire";
 
@@ -151,7 +154,7 @@ void autodiscovery() {
         const auto unique_id = board_unique_id + "-" + binary_sensor.name;
         JsonDocument json;
         json["unique_id"] = unique_id;
-        json["object_id"] = String("calor_") + binary_sensor.name;
+        json["default_entity_id"] = String("calor_") + binary_sensor.name;
         json["name"] = binary_sensor.friendly_name;
         json["device_class"] = binary_sensor.device_class;
         json["entity_category"] = "diagnostic";
