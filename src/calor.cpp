@@ -92,7 +92,7 @@ PicoUtils::PeriodicRun healthcheck(5, [] {
     if (healthy)
         last_healthy.reset();
 
-    if (last_healthy.elapsed() >= 15 * 60) {
+    if (last_healthy.elapsed() >= 8 * 60 * 60) {
         syslog.println(F("Healthcheck failing for too long.  Reset..."));
         ESP.reset();
     }
