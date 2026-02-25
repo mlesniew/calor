@@ -82,9 +82,14 @@ bool healthy = false;
 PicoPrometheus::Gauge health_gauge(prometheus, "health", "Board healthcheck", [] { return healthy ? 1 : 0; });
 
 PicoUtils::PeriodicRun healthcheck(5, [] {
+    static PicoUtils::Stopwatch last_healthy_comms;
     static PicoUtils::Stopwatch last_healthy;
 
     healthy = ((WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck()) || (millis() <= 30 * 1000);
+    if (healthy) {
+        last_healthy_comms.reset();
+    }
+
     for (auto & zone : zones) {
         healthy = healthy && zone->healthcheck();
     }
@@ -92,7 +97,8 @@ PicoUtils::PeriodicRun healthcheck(5, [] {
     if (healthy)
         last_healthy.reset();
 
-    if (last_healthy.elapsed() >= 8 * 60 * 60) {
+    if ((last_healthy.elapsed() >= 12 * 60 * 60)
+            || (last_healthy_comms.elapsed() >= 15 * 60)) {
         syslog.println(F("Healthcheck failing for too long.  Reset..."));
         ESP.reset();
     }
