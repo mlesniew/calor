@@ -6,10 +6,11 @@
 #include <PicoSyslog.h>
 
 #include "sensor.h"
+#include "mqtt.h"
 
 extern PicoSyslog::Logger syslog;
 extern PicoMQ picomq;
-extern PicoMQTT::Server mqtt;
+extern MQTTServer mqtt;
 
 namespace {
 std::list<Sensor *> sensors;

@@ -1,10 +1,11 @@
 #include <PicoMQTT.h>
 #include <PicoSyslog.h>
 
+#include "mqtt.h"
 #include "schalter.h"
 
 extern PicoSyslog::Logger syslog;
-extern PicoMQTT::Server mqtt;
+extern MQTTServer mqtt;
 
 namespace {
 

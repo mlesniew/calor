@@ -10,7 +10,6 @@
 
 #include <ArduinoJson.h>
 #include <PicoMQ.h>
-#include <PicoMQTT.h>
 #include <PicoPrometheus.h>
 #include <PicoSlugify.h>
 #include <PicoSyslog.h>
@@ -19,6 +18,7 @@
 #include "schalter.h"
 #include "hass.h"
 #include "zone.h"
+#include "mqtt.h"
 
 PicoPrometheus::Registry prometheus;
 
@@ -41,20 +41,6 @@ String hostname = "calor";
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
 
 PicoMQ picomq;
-
-class MQTTServer : public PicoMQTT::Server {
-    public:
-        const PicoUtils::Stopwatch & get_last_message_stopwatch() const { return last_message; }
-
-    protected:
-        PicoUtils::Stopwatch last_message;
-
-        void on_message(const char * topic, PicoMQTT::IncomingPacket & packet) {
-            last_message.reset();
-            PicoMQTT::Server::on_message(topic, packet);
-        }
-};
-
 MQTTServer mqtt;
 
 PicoPrometheus::Gauge heating_demand(prometheus, "heating_demand", "Burner heat demand state",
@@ -141,6 +127,8 @@ void setup_server() {
             server.sendJson(zone->get_status());
         }
     });
+
+    server.on("/uptime", HTTP_GET, [] { server.send(200, "text/plain", String(millis())); });
 
     prometheus.labels["module"] = "calor";
 
