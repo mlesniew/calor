@@ -57,7 +57,25 @@ void notify_boost(const Zone & zone) {
                  0, true);
 }
 
-void notify_health() {
+void notify_state(const Zone & zone) {
+    const char * state;
+    switch (zone.get_state()) {
+        case Zone::State::init:
+            state = "init";
+            break;
+        case Zone::State::heat:
+            state = "heat";
+            break;
+        case Zone::State::wait:
+            state = "wait";
+            break;
+        default:
+            state = "error";
+            break;
+    }
+    mqtt.publish("calor/" + zone.slug + "/state",
+                 state,
+                 0, true);
 }
 
 void autodiscovery() {
@@ -119,6 +137,8 @@ void autodiscovery() {
         JsonDocument json;
         json["unique_id"] = unique_id + "-boost";
         json["name"] = "Boost";
+        json["default_entity_id"] = "switch.calor_" + zone.slug + "_boost";
+        json["platform"] = "switch";
         json["availability_topic"] = mqtt.will.topic;
 
         json["command_topic"] = topic_base + "/boost/set";
@@ -132,6 +152,34 @@ void autodiscovery() {
         device["via_device"] = board_unique_id;
 
         const String disco_topic = hass_autodiscovery_topic + "/switch/" + unique_id + "-boost/config";
+        auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
+        serializeJson(json, publish);
+        publish.send();
+    }
+
+    for (const auto & zone_ptr : zones) {
+        const auto & zone = *zone_ptr;
+        const auto unique_id = board_unique_id + "-" + zone.unique_id();
+        const String topic_base = "calor/" + zone.slug;
+
+        JsonDocument json;
+        json["unique_id"] = unique_id + "-state";
+        json["name"] = "State";
+        json["default_entity_id"] = "sensor.calor_" + zone.slug + "_state";
+        json["availability_topic"] = mqtt.will.topic;
+        json["platform"] = "sensor";
+        json["entity_category"] = "diagnostic";
+
+        json["state_topic"] = topic_base + "/state";
+        json["icon"] = "mdi:state-machine";
+
+        auto device = json["device"];
+        device["name"] = "Calor " + zone.name;
+        device["suggested_area"] = zone.name;
+        device["identifiers"][0] = unique_id;
+        device["via_device"] = board_unique_id;
+
+        const String disco_topic = hass_autodiscovery_topic + "/sensor/" + unique_id + "-state/config";
         auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
         serializeJson(json, publish);
         publish.send();
@@ -153,7 +201,8 @@ void autodiscovery() {
         const auto unique_id = board_unique_id + "-" + binary_sensor.name;
         JsonDocument json;
         json["unique_id"] = unique_id;
-        json["default_entity_id"] = String("calor_") + binary_sensor.name;
+        json["default_entity_id"] = String("binary_sensor.calor_") + binary_sensor.name;
+        json["platform"] = "binary_sensor";
         json["name"] = binary_sensor.friendly_name;
         json["device_class"] = binary_sensor.device_class;
         json["entity_category"] = "diagnostic";
@@ -172,6 +221,34 @@ void autodiscovery() {
         device["sw_version"] = __DATE__ " " __TIME__;
 
         const String disco_topic = hass_autodiscovery_topic + "/binary_sensor/" + unique_id + "/config";
+        auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
+        serializeJson(json, publish);
+        publish.send();
+    }
+
+    {
+        const auto unique_id = board_unique_id + "-uptime";
+        JsonDocument json;
+        json["unique_id"] = unique_id;
+        json["platform"] = "sensor";
+        json["default_entity_id"] = "sensor.calor_uptime";
+        json["name"] = "Uptime";
+        json["entity_category"] = "diagnostic";
+        json["availability_topic"] = mqtt.will.topic;
+        json["state_topic"] = "calor/" + hostname + "/uptime";
+        json["icon"] = "mdi:timer";
+        json["unit_of_measurement"] = "s";
+
+
+        auto device = json["device"];
+        device["name"] = "Calor";
+        device["identifiers"][0] = board_unique_id;
+        device["configuration_url"] = "http://" + WiFi.localIP().toString();
+        device["manufacturer"] = "mlesniew";
+        device["model"] = "Calor";
+        device["sw_version"] = __DATE__ " " __TIME__;
+
+        const String disco_topic = hass_autodiscovery_topic + "/sensor/" + unique_id + "/config";
         auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
         serializeJson(json, publish);
         publish.send();
@@ -245,6 +322,11 @@ void init() {
             new PicoUtils::Watch<bool>(
                 [&zone] { return zone.boost_active(); },
                 [&zone] { notify_boost(zone); }));
+
+        watches.push_back(
+            new PicoUtils::Watch<Zone::State>(
+                [&zone] { return zone.get_state(); },
+                [&zone] { notify_state(zone); }));
     }
 
     watches.push_back(
@@ -266,6 +348,16 @@ void init() {
                      0, true);
     }
         ));
+
+    watches.push_back(
+        new PicoUtils::Watch<unsigned long>(
+            []
+    { return millis() / 1000 / 15; },
+    [](const unsigned long uptime) {
+        mqtt.publish("calor/" + hostname + "/uptime",
+                     String(uptime * 15),
+                     0, true);
+    }));
 }
 
 

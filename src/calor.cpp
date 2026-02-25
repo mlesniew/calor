@@ -20,9 +20,6 @@
 #include "hass.h"
 #include "zone.h"
 
-PicoMQ picomq;
-PicoMQTT::Server mqtt;
-
 PicoPrometheus::Registry prometheus;
 
 PicoSyslog::Logger syslog("calor");
@@ -42,6 +39,23 @@ String hass_autodiscovery_topic = "homeassistant";
 String hostname = "calor";
 
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
+
+PicoMQ picomq;
+
+class MQTTServer : public PicoMQTT::Server {
+    public:
+        const PicoUtils::Stopwatch & get_last_message_stopwatch() const { return last_message; }
+
+    protected:
+        PicoUtils::Stopwatch last_message;
+
+        void on_message(const char * topic, PicoMQTT::IncomingPacket & packet) {
+            last_message.reset();
+            PicoMQTT::Server::on_message(topic, packet);
+        }
+};
+
+MQTTServer mqtt;
 
 PicoPrometheus::Gauge heating_demand(prometheus, "heating_demand", "Burner heat demand state",
                                      [] { return heating_relay.get() ? 1 : 0; });
@@ -82,13 +96,9 @@ bool healthy = false;
 PicoPrometheus::Gauge health_gauge(prometheus, "health", "Board healthcheck", [] { return healthy ? 1 : 0; });
 
 PicoUtils::PeriodicRun healthcheck(5, [] {
-    static PicoUtils::Stopwatch last_healthy_comms;
     static PicoUtils::Stopwatch last_healthy;
 
     healthy = ((WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck()) || (millis() <= 30 * 1000);
-    if (healthy) {
-        last_healthy_comms.reset();
-    }
 
     for (auto & zone : zones) {
         healthy = healthy && zone->healthcheck();
@@ -98,7 +108,7 @@ PicoUtils::PeriodicRun healthcheck(5, [] {
         last_healthy.reset();
 
     if ((last_healthy.elapsed() >= 12 * 60 * 60)
-            || (last_healthy_comms.elapsed() >= 15 * 60)) {
+            || (mqtt.get_last_message_stopwatch().elapsed() >= 30 * 60)) {
         syslog.println(F("Healthcheck failing for too long.  Reset..."));
         ESP.reset();
     }
