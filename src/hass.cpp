@@ -153,7 +153,8 @@ void autodiscovery() {
         const auto unique_id = board_unique_id + "-" + binary_sensor.name;
         JsonDocument json;
         json["unique_id"] = unique_id;
-        json["default_entity_id"] = String("calor_") + binary_sensor.name;
+        json["platform"] = "binary_sensor";
+        json["default_entity_id"] = String("binary_sensor.calor_") + binary_sensor.name;
         json["name"] = binary_sensor.friendly_name;
         json["device_class"] = binary_sensor.device_class;
         json["entity_category"] = "diagnostic";
@@ -176,6 +177,33 @@ void autodiscovery() {
         serializeJson(json, publish);
         publish.send();
     }
+
+    {
+        const auto unique_id = board_unique_id + "-reboot";
+        JsonDocument json;
+        json["unique_id"] = unique_id;
+        json["platform"] = "event";
+        json["default_entity_id"] = String("event.calor_reboot");
+        json["name"] = "Reboot";
+        json["entity_category"] = "diagnostic";
+        json["availability_topic"] = mqtt.will.topic;
+        json["state_topic"] = "calor/" + hostname + "/reboot";
+        json["icon"] = "mdi:hexagram-outline";
+        json["event_types"][0] = "reboot";
+
+        auto device = json["device"];
+        device["name"] = "Calor";
+        device["identifiers"][0] = board_unique_id;
+        device["configuration_url"] = "http://" + WiFi.localIP().toString();
+        device["manufacturer"] = "mlesniew";
+        device["model"] = "Calor";
+        device["sw_version"] = __DATE__ " " __TIME__;
+
+        const String disco_topic = hass_autodiscovery_topic + "/event/" + unique_id + "/config";
+        auto publish = mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
+        serializeJson(json, publish);
+        publish.send();
+    }
 }
 
 void init() {
@@ -193,6 +221,12 @@ void init() {
 
         // notify about availability
         mqtt.publish(mqtt.will.topic, "online", 0, true);
+
+        static bool reboot_event_fired = false;
+        if (reboot_event_fired) {
+            mqtt.publish("calor/" + hostname + "/reboot", "reboot");
+            reboot_event_fired = true;
+        }
     };
 
     for (auto & zone : zones) {
