@@ -27,33 +27,33 @@ namespace HomeAssistant {
 
 PicoMQTT::Client mqtt;
 
-void notify_current_temperature(const Zone & zone) {
-    mqtt.publish("calor/" + zone.slug + "/current_temperature",
-                 String(zone.get_reading()),
+void notify_current_temperature(const Zone * zone) {
+    mqtt.publish("calor/" + zone->slug + "/current_temperature",
+                 String(zone->get_reading()),
                  0, true);
 }
 
-void notify_desired_temperature(const Zone & zone) {
-    mqtt.publish("calor/" + zone.slug + "/desired_temperature",
-                 String(zone.desired),
+void notify_desired_temperature(const Zone * zone) {
+    mqtt.publish("calor/" + zone->slug + "/desired_temperature",
+                 String(zone->desired),
                  0, true);
 }
 
-void notify_action(const Zone & zone) {
-    mqtt.publish("calor/" + zone.slug + "/action",
-                 zone.enabled && zone.get_state() == Zone::State::heat ? "heating" : "idle",
+void notify_action(const Zone * zone) {
+    mqtt.publish("calor/" + zone->slug + "/action",
+                 zone->enabled && zone->get_state() == Zone::State::heat ? "heating" : "idle",
                  0, true);
 }
 
-void notify_mode(const Zone & zone) {
-    mqtt.publish("calor/" + zone.slug + "/mode",
-                 zone.enabled ? "heat" : "off",
+void notify_mode(const Zone * zone) {
+    mqtt.publish("calor/" + zone->slug + "/mode",
+                 zone->enabled ? "heat" : "off",
                  0, true);
 }
 
-void notify_boost(const Zone & zone) {
-    mqtt.publish("calor/" + zone.slug + "/boost",
-                 zone.boost_active() ? "ON" : "OFF",
+void notify_boost(const Zone * zone) {
+    mqtt.publish("calor/" + zone->slug + "/boost",
+                 zone->boost_active() ? "ON" : "OFF",
                  0, true);
 }
 
@@ -195,56 +195,56 @@ void init() {
         mqtt.publish(mqtt.will.topic, "online", 0, true);
     };
 
-    for (auto & zone_ptr : zones) {
-        auto & zone = *zone_ptr;
-        const String topic_base = "calor/" + zone.slug;
-        mqtt.subscribe(topic_base + "/desired_temperature/set", [&zone](String payload) {
+    for (auto & zone : zones) {
+
+        const String topic_base = "calor/" + zone->slug;
+        mqtt.subscribe(topic_base + "/desired_temperature/set", [zone](String payload) {
             const double value = payload.toDouble();
             if (value >= 7 && value <= 25) {
-                zone.desired = value;
+                zone->desired = value;
             }
         });
 
-        mqtt.subscribe(topic_base + "/mode/set", [&zone](String payload) {
+        mqtt.subscribe(topic_base + "/mode/set", [zone](String payload) {
             if (payload == "heat") {
-                zone.enabled = true;
+                zone->enabled = true;
             } else if (payload == "off") {
-                zone.enabled = false;
+                zone->enabled = false;
             }
         });
 
-        mqtt.subscribe(topic_base + "/boost/set", [&zone](String payload) {
+        mqtt.subscribe(topic_base + "/boost/set", [zone](String payload) {
             if (payload == "ON") {
-                zone.boost();
+                zone->boost();
             } else if (payload == "OFF") {
-                zone.boost(0);
+                zone->boost(0);
             }
         });
 
         watches.push_back(
             new PicoUtils::Watch<double>(
-                [&zone] { return zone.get_reading(); },
-                [&zone] { notify_current_temperature(zone); }));
+                [zone] { return zone->get_reading(); },
+                [zone] { notify_current_temperature(zone); }));
 
         watches.push_back(
             new PicoUtils::Watch<double>(
-                [&zone] { return zone.desired; },
-                [&zone] { notify_desired_temperature(zone); }));
+                [zone] { return zone->desired; },
+                [zone] { notify_desired_temperature(zone); }));
 
         watches.push_back(
             new PicoUtils::Watch<bool>(
-                [&zone] { return zone.enabled && zone.get_state() == Zone::State::heat; },
-                [&zone] { notify_action(zone); }));
+                [zone] { return zone->enabled && zone->get_state() == Zone::State::heat; },
+                [zone] { notify_action(zone); }));
 
         watches.push_back(
             new PicoUtils::Watch<bool>(
-                [&zone] { return zone.enabled; },
-                [&zone] { notify_mode(zone); }));
+                [zone] { return zone->enabled; },
+                [zone] { notify_mode(zone); }));
 
         watches.push_back(
             new PicoUtils::Watch<bool>(
-                [&zone] { return zone.boost_active(); },
-                [&zone] { notify_boost(zone); }));
+                [zone] { return zone->boost_active(); },
+                [zone] { notify_boost(zone); }));
     }
 
     watches.push_back(
