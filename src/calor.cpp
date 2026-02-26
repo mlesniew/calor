@@ -11,7 +11,6 @@
 #include <ArduinoJson.h>
 #include <PicoMQ.h>
 #include <PicoMQTT.h>
-#include <PicoPrometheus.h>
 #include <PicoSlugify.h>
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
@@ -22,8 +21,6 @@
 
 PicoMQ picomq;
 PicoMQTT::Server mqtt;
-
-PicoPrometheus::Registry prometheus;
 
 PicoSyslog::Logger syslog("calor");
 PicoUtils::PinInput button(D1);
@@ -42,9 +39,6 @@ String hass_autodiscovery_topic = "homeassistant";
 String hostname = "calor";
 
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
-
-PicoPrometheus::Gauge heating_demand(prometheus, "heating_demand", "Burner heat demand state",
-                                     [] { return heating_relay.get() ? 1 : 0; });
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
 
@@ -79,7 +73,6 @@ JsonDocument get_config() {
 }
 
 bool healthy = false;
-PicoPrometheus::Gauge health_gauge(prometheus, "health", "Board healthcheck", [] { return healthy ? 1 : 0; });
 
 PicoUtils::PeriodicRun healthcheck(5, [] {
     static PicoUtils::Stopwatch last_healthy;
@@ -126,9 +119,9 @@ void setup_server() {
         }
     });
 
-    prometheus.labels["module"] = "calor";
-
-    prometheus.register_metrics_endpoint(server);
+    server.on("/uptime", HTTP_GET, []
+              { unsigned long uptime = millis();
+                server.send(200, "text/plain", String(uptime / 1000)); });
 
     server.begin();
 }
