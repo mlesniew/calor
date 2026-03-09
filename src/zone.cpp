@@ -3,7 +3,6 @@
 #include <Hash.h>
 
 #include <ArduinoJson.h>
-#include <PicoPrometheus.h>
 #include <PicoSlugify.h>
 #include <PicoSyslog.h>
 
@@ -11,7 +10,6 @@
 #include "schalter.h"
 #include "zone.h"
 
-extern PicoPrometheus::Registry prometheus;
 extern PicoSyslog::Logger syslog;
 
 const char * to_c_str(const Zone::State & s) {
@@ -37,35 +35,6 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
       sensor(get_sensor(json["sensor"])),
       valve(get_schalter(json["valve"])),
       boost_timeout(0) {
-
-    // setup metrics
-    static PicoPrometheus::Gauge zone_state(prometheus, "zone_state", "Zone state enum");
-    static PicoPrometheus::Gauge zone_temperature_desired(prometheus, "zone_temperature_desired",
-            "Zone's desired temperature");
-    static PicoPrometheus::Gauge zone_temperature_hysteresis(prometheus, "zone_temperature_desired_hysteresis",
-            "Zone's desired temperature hysteresis");
-    static PicoPrometheus::Gauge zone_temperature_reading(prometheus, "zone_temperature_reading",
-            "Zone's actual temperature");
-    static PicoPrometheus::Gauge zone_valve_state(prometheus, "zone_valve_state", "Zone's valve state enum");
-    static PicoPrometheus::Gauge zone_enabled(prometheus, "zone_enabled", "Zone enabled flag");
-
-    const PicoPrometheus::Labels labels = {{"zone", name.c_str()}};
-    zone_state[labels].bind([this] {
-        return static_cast<typename std::underlying_type<State>::type>(state);
-    });
-    zone_temperature_desired[labels].bind(desired);
-    zone_temperature_hysteresis[labels].bind(hysteresis);
-    zone_temperature_reading[labels].bind([this] {
-        return sensor->get_reading();
-    });
-    if (valve) {
-        zone_valve_state[labels].bind([this] {
-            return static_cast<typename std::underlying_type<Schalter::State>::type>(Schalter::State(valve->get_state()));
-        });
-    }
-    zone_enabled[labels].bind([this] {
-        return enabled ? 1 : 0;
-    });
 }
 
 void Zone::tick() {
