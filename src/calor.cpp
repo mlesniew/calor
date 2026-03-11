@@ -32,8 +32,7 @@ std::vector<Zone *> zones;
 
 std::vector<PicoUtils::Tickable *> tickables;
 
-String hass_autodiscovery_topic = "homeassistant";
-String hostname = "calor";
+String hostname = "Calor";
 
 PicoUtils::RestfulServer<ESP8266WebServer> server(80);
 
@@ -42,8 +41,8 @@ MQTTServer mqtt;
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
 
-Zone *find_zone_by_name(const String &name) {
-    for (auto &zone_ptr : zones) {
+Zone * find_zone_by_name(const String & name) {
+    for (auto & zone_ptr : zones) {
         if (name == zone_ptr->name) {
             return zone_ptr;
         }
@@ -55,7 +54,7 @@ JsonDocument get_config() {
     JsonDocument json;
 
     auto zone_config = json["zones"].to<JsonObject>();
-    for (const auto &zone : zones) {
+    for (const auto & zone : zones) {
         zone_config[zone->name] = zone->get_config();
     }
 
@@ -81,7 +80,7 @@ PicoUtils::PeriodicRun healthcheck(5, [] {
         ((WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck()) ||
         (millis() <= 30 * 1000);
 
-    for (auto &zone : zones) {
+    for (auto & zone : zones) {
         healthy = healthy && zone->healthcheck();
     }
 
@@ -98,7 +97,7 @@ void setup_server() {
     server.on("/zones", HTTP_GET, [] {
         JsonDocument json;
 
-        for (const auto &zone : zones) {
+        for (const auto & zone : zones) {
             json[zone->name] = zone->get_status();
         }
 
@@ -110,7 +109,7 @@ void setup_server() {
     server.on(UriRegex("/zones/([^/]+)"), HTTP_GET, [] {
         const String name = server.decodedPathArg(0).c_str();
 
-        Zone *zone = find_zone_by_name(name);
+        Zone * zone = find_zone_by_name(name);
 
         if (!zone) {
             server.send(404);
@@ -148,7 +147,7 @@ void setup() {
           "Press and hold button now to enter WiFi setup.\n"));
 
     delay(3000);
-    reset_button.init();
+    // reset_button.init();
 
     LittleFS.begin();
 
@@ -157,7 +156,7 @@ void setup() {
             LittleFS, FPSTR(CONFIG_FILE));
 
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
-            Zone *zone = new Zone(kv.key().c_str(), kv.value());
+            Zone * zone = new Zone(kv.key().c_str(), kv.value());
             zones.push_back(zone);
             tickables.push_back(zone);
         }
@@ -171,7 +170,7 @@ void setup() {
         }
 
         syslog.server = config["syslog"] | "";
-        hostname = PicoSlugify::slugify(config["hostname"] | "calor");
+        hostname = config["hostname"] | "Calor";
     }
 
     wifi_control.init(button);
@@ -182,7 +181,7 @@ void setup() {
 
     tickables.push_back(new PicoUtils::Watch<bool>(
         [] {
-            for (auto &zone : zones) {
+            for (auto & zone : zones) {
                 if (zone->heat()) {
                     return true;
                 }
@@ -202,7 +201,7 @@ void setup() {
     mqtt.begin();
     HomeAssistant::init();
 
-    ArduinoOTA.setHostname(hostname.c_str());
+    ArduinoOTA.setHostname(PicoSlugify::slugify(hostname).c_str());
     ArduinoOTA.begin();
 }
 
@@ -211,7 +210,7 @@ void loop() {
     server.handleClient();
     picomq.loop();
     mqtt.loop();
-    for (auto &tickable : tickables) {
+    for (auto & tickable : tickables) {
         tickable->tick();
     }
     HomeAssistant::tick();

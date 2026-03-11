@@ -16,7 +16,7 @@ namespace {
 std::list<Sensor *> sensors;
 }
 
-const char *to_c_str(const AbstractSensor::State &s) {
+const char * to_c_str(const AbstractSensor::State & s) {
     switch (s) {
         case AbstractSensor::State::init:
             return "init";
@@ -45,7 +45,7 @@ JsonDocument DummySensor::get_config() const {
     return json;
 }
 
-Sensor::Sensor(const String &address)
+Sensor::Sensor(const String & address)
     : address(address), reading(std::numeric_limits<double>::quiet_NaN()) {
     const String topic = "celsius/+/" + address + "/temperature";
     const auto handler = [this](const char *, String payload) {
@@ -76,7 +76,7 @@ JsonDocument Sensor::get_config() const {
 
 void SensorChain::tick() {
     State new_state = State::error;
-    for (AbstractSensor *sensor : sensors) {
+    for (AbstractSensor * sensor : sensors) {
         sensor->tick();
         if (new_state == State::error) {
             new_state = sensor->get_state();
@@ -86,7 +86,7 @@ void SensorChain::tick() {
 }
 
 double SensorChain::get_reading() const {
-    for (AbstractSensor *sensor : sensors) {
+    for (AbstractSensor * sensor : sensors) {
         if (sensor->get_state() == State::ok) {
             return sensor->get_reading();
         }
@@ -97,7 +97,7 @@ double SensorChain::get_reading() const {
 String SensorChain::str() const {
     String ret;
     bool first = true;
-    for (AbstractSensor *sensor : sensors) {
+    for (AbstractSensor * sensor : sensors) {
         if (first) {
             ret = sensor->str();
             first = false;
@@ -111,13 +111,13 @@ String SensorChain::str() const {
 JsonDocument SensorChain::get_config() const {
     JsonDocument json;
     unsigned int idx = 0;
-    for (AbstractSensor *sensor : sensors) {
+    for (AbstractSensor * sensor : sensors) {
         json[idx++] = sensor->get_config();
     }
     return json;
 }
 
-AbstractSensor *get_sensor(const JsonVariantConst &json) {
+AbstractSensor * get_sensor(const JsonVariantConst & json) {
     if (json.is<const char *>()) {
         const String address = json.as<const char *>();
 
@@ -132,8 +132,8 @@ AbstractSensor *get_sensor(const JsonVariantConst &json) {
         return sensor;
     } else if (json.is<JsonArrayConst>()) {
         std::list<AbstractSensor *> elements;
-        for (const JsonVariantConst &value : json.as<JsonArrayConst>()) {
-            AbstractSensor *element = get_sensor(value);
+        for (const JsonVariantConst & value : json.as<JsonArrayConst>()) {
+            AbstractSensor * element = get_sensor(value);
             if (element) {
                 elements.push_back(element);
             }

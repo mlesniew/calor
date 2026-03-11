@@ -39,7 +39,7 @@ public:
 
 class Sensor : public AbstractSensor {
 public:
-    Sensor(const String &address);
+    Sensor(const String & address);
 
     void tick() override;
     virtual String str() const override { return address; }
@@ -66,5 +66,5 @@ protected:
     const std::list<AbstractSensor *> sensors;
 };
 
-const char *to_c_str(const AbstractSensor::State &s);
-AbstractSensor *get_sensor(const JsonVariantConst &json);
+const char * to_c_str(const AbstractSensor::State & s);
+AbstractSensor * get_sensor(const JsonVariantConst & json);

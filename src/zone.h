@@ -15,9 +15,9 @@ public:
         error = -1,
     };
 
-    Zone(const String &name, const JsonVariantConst &json);
+    Zone(const String & name, const JsonVariantConst & json);
     Zone(const Zone &) = delete;
-    Zone &operator=(const Zone &) = delete;
+    Zone & operator=(const Zone &) = delete;
 
     void tick();
     bool heat() const;
@@ -34,15 +34,14 @@ public:
     bool boost_active() const;
 
     const String name;
-    const String slug;
     bool enabled;
     double desired;
     const double hysteresis;
 
 private:
     State state;
-    AbstractSensor *sensor;
-    AbstractSchalter *valve;
+    AbstractSensor * sensor;
+    AbstractSchalter * valve;
 
     double boost_timeout;
     PicoUtils::Stopwatch boost_stopwatch;

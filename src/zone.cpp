@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Hash.h>
-#include <PicoSlugify.h>
 #include <PicoSyslog.h>
 
 #include <cstdint>
@@ -28,7 +27,6 @@ const char * to_c_str(const Zone::State & s) {
 
 Zone::Zone(const String & name, const JsonVariantConst & json)
     : name(name),
-      slug(PicoSlugify::slugify(name)),
       enabled(json["enabled"] | true),
       desired(json["desired"] | 21.0),
       hysteresis(json["hysteresis"] | 0.5),

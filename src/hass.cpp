@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <PicoHA.h>
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
 
@@ -11,303 +12,93 @@
 
 extern PicoSyslog::Logger syslog;
 extern std::vector<Zone *> zones;
-extern String hass_autodiscovery_topic;
 extern bool healthy;
 extern PicoUtils::PinOutput heating_relay;
 extern String hostname;
-
-namespace {
-
-const String board_id(ESP.getChipId(), HEX);
-
-std::list<PicoUtils::WatchInterface *> watches;
-
-}  // namespace
 
 namespace HomeAssistant {
 
 PicoMQTT::Client mqtt;
 
-void notify_current_temperature(const Zone *zone) {
-    mqtt.publish("calor/" + zone->slug + "/current_temperature",
-                 String(zone->get_reading()), 0, true);
-}
+PicoHA::Device device(mqtt, "Calor", "mlesniew", "Calor");
+PicoHA::QueuedEvent reboot_event(device, "reboot", "Reboot");
 
-void notify_desired_temperature(const Zone *zone) {
-    mqtt.publish("calor/" + zone->slug + "/desired_temperature",
-                 String(zone->desired), 0, true);
-}
-
-void notify_action(const Zone *zone) {
-    mqtt.publish("calor/" + zone->slug + "/action",
-                 zone->enabled && zone->get_state() == Zone::State::heat
-                     ? "heating"
-                     : "idle",
-                 0, true);
-}
-
-void notify_mode(const Zone *zone) {
-    mqtt.publish("calor/" + zone->slug + "/mode",
-                 zone->enabled ? "heat" : "off", 0, true);
-}
-
-void notify_boost(const Zone *zone) {
-    mqtt.publish("calor/" + zone->slug + "/boost",
-                 zone->boost_active() ? "ON" : "OFF", 0, true);
-}
-
-void notify_health() {}
-
-void autodiscovery() {
-    if (hass_autodiscovery_topic.length() == 0) {
-        syslog.println("Home Assistant autodiscovery disabled.");
-        return;
-    }
-
-    syslog.println("Sending Home Assistant autodiscovery messages...");
-
-    const String board_unique_id = "calor-" + board_id;
-
-    for (const auto &zone_ptr : zones) {
-        const auto &zone = *zone_ptr;
-        const auto unique_id = board_unique_id + "-" + zone.unique_id();
-
-        const String topic_base = "calor/" + zone.slug;
-
-        JsonDocument json;
-
-        json["unique_id"] = unique_id;
-        json["name"] =
-            nullptr;  // Don't set the name, only the device name matters
-        json["default_entity_id"] = "climate.calor_" + zone.slug;
-        json["availability_topic"] = mqtt.will.topic;
-        json["icon"] = "mdi:fire";
-
-        json["temperature_unit"] = "C";
-        json["min_temp"] = 7;
-        json["max_temp"] = 25;
-        json["temp_step"] = 0.25;
-
-        json["current_temperature_topic"] = topic_base + "/current_temperature";
-        json["temperature_command_topic"] =
-            topic_base + "/desired_temperature/set";
-        json["temperature_state_topic"] = topic_base + "/desired_temperature";
-        json["action_topic"] = topic_base + "/action";
-        json["mode_state_topic"] = topic_base + "/mode";
-        json["mode_command_topic"] = topic_base + "/mode/set";
-        json["modes"][0] = "heat";
-        json["modes"][1] = "off";
-        json["retain"] = true;
-
-        auto device = json["device"];
-        device["name"] = "Calor " + zone.name;
-        device["suggested_area"] = zone.name;
-        device["identifiers"][0] = unique_id;
-        device["via_device"] = board_unique_id;
-
-        const String disco_topic =
-            hass_autodiscovery_topic + "/climate/" + unique_id + "/config";
-        auto publish =
-            mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
-        serializeJson(json, publish);
-        publish.send();
-    }
-
-    for (const auto &zone_ptr : zones) {
-        const auto &zone = *zone_ptr;
-        const auto unique_id = board_unique_id + "-" + zone.unique_id();
-        const String topic_base = "calor/" + zone.slug;
-
-        JsonDocument json;
-        json["unique_id"] = unique_id + "-boost";
-        json["name"] = "Boost";
-        json["availability_topic"] = mqtt.will.topic;
-
-        json["command_topic"] = topic_base + "/boost/set";
-        json["state_topic"] = topic_base + "/boost";
-        json["icon"] = "mdi:thermometer-plus";
-
-        auto device = json["device"];
-        device["name"] = "Calor " + zone.name;
-        device["suggested_area"] = zone.name;
-        device["identifiers"][0] = unique_id;
-        device["via_device"] = board_unique_id;
-
-        const String disco_topic =
-            hass_autodiscovery_topic + "/switch/" + unique_id + "-boost/config";
-        auto publish =
-            mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
-        serializeJson(json, publish);
-        publish.send();
-    }
-
-    struct BinarySensor {
-        const char *name;
-        const char *friendly_name;
-        const char *device_class;
-        const char *icon;
-    };
-
-    static const BinarySensor binary_sensors[] = {
-        {"problem", "Healthcheck", "problem", nullptr},
-        {"boiler", "Boiler", "power", "mdi:fire"},
-    };
-
-    for (const auto &binary_sensor : binary_sensors) {
-        const auto unique_id = board_unique_id + "-" + binary_sensor.name;
-        JsonDocument json;
-        json["unique_id"] = unique_id;
-        json["platform"] = "binary_sensor";
-        json["default_entity_id"] =
-            String("binary_sensor.calor_") + binary_sensor.name;
-        json["name"] = binary_sensor.friendly_name;
-        json["device_class"] = binary_sensor.device_class;
-        json["entity_category"] = "diagnostic";
-        json["availability_topic"] = mqtt.will.topic;
-        json["state_topic"] = "calor/" + hostname + "/" + binary_sensor.name;
-        if (binary_sensor.icon) {
-            json["icon"] = binary_sensor.icon;
-        }
-
-        auto device = json["device"];
-        device["name"] = "Calor";
-        device["identifiers"][0] = board_unique_id;
-        device["configuration_url"] = "http://" + WiFi.localIP().toString();
-        device["manufacturer"] = "mlesniew";
-        device["model"] = "Calor";
-        device["sw_version"] = __DATE__ " " __TIME__;
-
-        const String disco_topic = hass_autodiscovery_topic +
-                                   "/binary_sensor/" + unique_id + "/config";
-        auto publish =
-            mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
-        serializeJson(json, publish);
-        publish.send();
-    }
-
-    {
-        const auto unique_id = board_unique_id + "-reboot";
-        JsonDocument json;
-        json["unique_id"] = unique_id;
-        json["platform"] = "event";
-        json["default_entity_id"] = String("event.calor_reboot");
-        json["name"] = "Reboot";
-        json["entity_category"] = "diagnostic";
-        json["availability_topic"] = mqtt.will.topic;
-        json["state_topic"] = "calor/" + hostname + "/reboot";
-        json["icon"] = "mdi:hexagram-outline";
-        json["event_types"][0] = "reboot";
-
-        auto device = json["device"];
-        device["name"] = "Calor";
-        device["identifiers"][0] = board_unique_id;
-        device["configuration_url"] = "http://" + WiFi.localIP().toString();
-        device["manufacturer"] = "mlesniew";
-        device["model"] = "Calor";
-        device["sw_version"] = __DATE__ " " __TIME__;
-
-        const String disco_topic =
-            hass_autodiscovery_topic + "/event/" + unique_id + "/config";
-        auto publish =
-            mqtt.begin_publish(disco_topic, measureJson(json), 0, true);
-        serializeJson(json, publish);
-        publish.send();
-    }
-}
+PicoHA::BinarySensor problem_sensor(device, "problem", "Problem");
+PicoHA::BinarySensor boiler_sensor(device, "boiler", "Boiler");
 
 void init() {
-    mqtt.client_id = "calor-" + hostname;
-    mqtt.will.topic = "calor/" + hostname + "/availability";
-    mqtt.will.payload = "offline";
-    mqtt.will.retain = true;
+    device.name = hostname;
 
-    mqtt.connected_callback = [] {
-        // send autodiscovery messages
-        autodiscovery();
+    boiler_sensor.device_class = "power";
+    boiler_sensor.icon = "fire";
+    boiler_sensor.getter = [] { return heating_relay.get(); };
 
-        // notify about the current state
-        for (auto &watch : watches) {
-            watch->fire();
-        }
+    problem_sensor.device_class = "problem";
+    problem_sensor.icon = "alert";
+    problem_sensor.getter = [] { return !healthy; };
 
-        // notify about availability
-        mqtt.publish(mqtt.will.topic, "online", 0, true);
+    PicoHA::add_diagnostic_entities(device);
 
-        static bool reboot_event_fired = false;
-        if (reboot_event_fired) {
-            mqtt.publish("calor/" + hostname + "/reboot", "reboot");
-            reboot_event_fired = true;
-        }
-    };
+    for (auto zone : zones) {
+        PicoHA::ChildDevice * zone_device =
+            new PicoHA::ChildDevice(device, zone->name, "Calor " + zone->name,
+                                    "mlesniew", "Calor Zone", zone->name);
 
-    for (auto &zone : zones) {
-        const String topic_base = "calor/" + zone->slug;
-        mqtt.subscribe(topic_base + "/desired_temperature/set",
-                       [zone](String payload) {
-                           const double value = payload.toDouble();
-                           if (value >= 7 && value <= 25) {
-                               zone->desired = value;
-                           }
-                       });
+        PicoHA::Climate * climate =
+            new PicoHA::Climate(*zone_device, "climate", "");
 
-        mqtt.subscribe(topic_base + "/mode/set", [zone](String payload) {
-            if (payload == "heat") {
-                zone->enabled = true;
-            } else if (payload == "off") {
-                zone->enabled = false;
+        climate->min_temp = 7;
+        climate->max_temp = 25;
+        climate->temp_step = 0.25;
+        climate->temperature_unit = PicoHA::Climate::TemperatureUnit::celsius;
+        climate->modes = {PicoHA::Climate::Mode::heat,
+                          PicoHA::Climate::Mode::off};
+
+        climate->mode_getter = [zone] {
+            return zone->enabled ? PicoHA::Climate::Mode::heat
+                                 : PicoHA::Climate::Mode::off;
+        };
+        climate->mode_setter = [zone](PicoHA::Climate::Mode mode) {
+            zone->enabled = (mode == PicoHA::Climate::Mode::heat);
+        };
+
+        climate->action_getter = [zone] {
+            if (!zone->enabled) {
+                return PicoHA::Climate::Action::off;
             }
-        });
+            if (zone->get_state() == Zone::State::heat) {
+                return PicoHA::Climate::Action::heating;
+            } else {
+                return PicoHA::Climate::Action::idle;
+            }
+        };
 
-        mqtt.subscribe(topic_base + "/boost/set", [zone](String payload) {
-            if (payload == "ON") {
+        climate->bind_power(&(zone->enabled));
+        climate->bind_target_temperature(&(zone->desired));
+        climate->current_temperature_getter = [zone] {
+            return zone->get_reading();
+        };
+
+        PicoHA::Switch * boost =
+            new PicoHA::Switch(*zone_device, "boost", "Boost");
+
+        boost->getter = [zone] { return zone->boost_active(); };
+        boost->setter = [zone](bool value) {
+            if (value) {
                 zone->boost();
-            } else if (payload == "OFF") {
+            } else {
                 zone->boost(0);
             }
-        });
-
-        watches.push_back(new PicoUtils::Watch<double>(
-            [zone] { return zone->get_reading(); },
-            [zone] { notify_current_temperature(zone); }));
-
-        watches.push_back(new PicoUtils::Watch<double>(
-            [zone] { return zone->desired; },
-            [zone] { notify_desired_temperature(zone); }));
-
-        watches.push_back(new PicoUtils::Watch<bool>(
-            [zone] {
-                return zone->enabled && zone->get_state() == Zone::State::heat;
-            },
-            [zone] { notify_action(zone); }));
-
-        watches.push_back(new PicoUtils::Watch<bool>(
-            [zone] { return zone->enabled; }, [zone] { notify_mode(zone); }));
-
-        watches.push_back(
-            new PicoUtils::Watch<bool>([zone] { return zone->boost_active(); },
-                                       [zone] { notify_boost(zone); }));
+        };
     }
 
-    watches.push_back(new PicoUtils::Watch<bool>(
-        [] { return healthy; },
-        [](const bool healthy) {
-            mqtt.publish("calor/" + hostname + "/problem",
-                         !healthy ? "ON" : "OFF", 0, true);
-        }));
-
-    watches.push_back(new PicoUtils::Watch<bool>(
-        [] { return heating_relay.get(); },
-        [](const bool state) {
-            mqtt.publish("calor/" + hostname + "/boiler", state ? "ON" : "OFF",
-                         0, true);
-        }));
+    mqtt.begin();
+    device.begin();
 }
 
 void tick() {
     mqtt.loop();
-    for (auto &watch : watches) {
-        watch->tick();
-    }
+    device.tick();
 }
 
 bool connected() { return mqtt.connected(); }
