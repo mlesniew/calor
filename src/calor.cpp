@@ -1,25 +1,23 @@
-#include <vector>
-#include <set>
-#include <string>
-
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
-#include <uri/UriRegex.h>
-
-#include <ArduinoJson.h>
 #include <PicoMQ.h>
 #include <PicoMQTT.h>
 #include <PicoSlugify.h>
 #include <PicoSyslog.h>
 #include <PicoUtils.h>
+#include <uri/UriRegex.h>
 
-#include "schalter.h"
+#include <set>
+#include <string>
+#include <vector>
+
 #include "hass.h"
-#include "zone.h"
 #include "mqtt.h"
-
+#include "schalter.h"
+#include "zone.h"
 
 PicoSyslog::Logger syslog("calor");
 PicoUtils::PinInput button(D1);
@@ -44,8 +42,8 @@ MQTTServer mqtt;
 
 const char CONFIG_FILE[] PROGMEM = "/config.json";
 
-Zone * find_zone_by_name(const String & name) {
-    for (auto & zone_ptr : zones) {
+Zone *find_zone_by_name(const String &name) {
+    for (auto &zone_ptr : zones) {
         if (name == zone_ptr->name) {
             return zone_ptr;
         }
@@ -57,7 +55,7 @@ JsonDocument get_config() {
     JsonDocument json;
 
     auto zone_config = json["zones"].to<JsonObject>();
-    for (const auto & zone : zones) {
+    for (const auto &zone : zones) {
         zone_config[zone->name] = zone->get_config();
     }
 
@@ -79,42 +77,40 @@ bool healthy = false;
 PicoUtils::PeriodicRun healthcheck(5, [] {
     static PicoUtils::Stopwatch last_healthy;
 
-    healthy = ((WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck()) || (millis() <= 30 * 1000);
+    healthy =
+        ((WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck()) ||
+        (millis() <= 30 * 1000);
 
-    for (auto & zone : zones) {
+    for (auto &zone : zones) {
         healthy = healthy && zone->healthcheck();
     }
 
-    if (healthy)
-        last_healthy.reset();
+    if (healthy) last_healthy.reset();
 
-    if ((last_healthy.elapsed() >= 12 * 60 * 60)
-            || (mqtt.get_last_message_stopwatch().elapsed() >= 30 * 60)) {
+    if ((last_healthy.elapsed() >= 12 * 60 * 60) ||
+        (mqtt.get_last_message_stopwatch().elapsed() >= 30 * 60)) {
         syslog.println(F("Healthcheck failing for too long.  Reset..."));
         ESP.reset();
     }
 });
 
 void setup_server() {
-
     server.on("/zones", HTTP_GET, [] {
         JsonDocument json;
 
-        for (const auto & zone : zones) {
+        for (const auto &zone : zones) {
             json[zone->name] = zone->get_status();
         }
 
         server.sendJson(json);
     });
 
-    server.on("/config", HTTP_GET, [] {
-        server.sendJson(get_config());
-    });
+    server.on("/config", HTTP_GET, [] { server.sendJson(get_config()); });
 
     server.on(UriRegex("/zones/([^/]+)"), HTTP_GET, [] {
         const String name = server.decodedPathArg(0).c_str();
 
-        Zone * zone = find_zone_by_name(name);
+        Zone *zone = find_zone_by_name(name);
 
         if (!zone) {
             server.send(404);
@@ -140,16 +136,16 @@ void setup() {
 
     Serial.begin(115200);
 
-    Serial.println(F("\n\n"
-                     "  ___      _\n"
-                     " / __|__ _| |___ _ _\n"
-                     "| (__/ _` | / _ \\ '_|\n"
-                     " \\___\\__,_|_\\___/_|\n"
-                     "\n"
-                     "Calor " __DATE__ " " __TIME__ "\n"
-                     "\n\n"
-                     "Press and hold button now to enter WiFi setup.\n"
-                    ));
+    Serial.println(
+        F("\n\n"
+          "  ___      _\n"
+          " / __|__ _| |___ _ _\n"
+          "| (__/ _` | / _ \\ '_|\n"
+          " \\___\\__,_|_\\___/_|\n"
+          "\n"
+          "Calor " __DATE__ " " __TIME__ "\n"
+          "\n\n"
+          "Press and hold button now to enter WiFi setup.\n"));
 
     delay(3000);
     reset_button.init();
@@ -157,10 +153,11 @@ void setup() {
     LittleFS.begin();
 
     {
-        const auto config = PicoUtils::JsonConfigFile<JsonDocument>(LittleFS, FPSTR(CONFIG_FILE));
+        const auto config = PicoUtils::JsonConfigFile<JsonDocument>(
+            LittleFS, FPSTR(CONFIG_FILE));
 
         for (JsonPairConst kv : config["zones"].as<JsonObjectConst>()) {
-            Zone * zone = new Zone(kv.key().c_str(), kv.value());
+            Zone *zone = new Zone(kv.key().c_str(), kv.value());
             zones.push_back(zone);
             tickables.push_back(zone);
         }
@@ -184,18 +181,18 @@ void setup() {
     };
 
     tickables.push_back(new PicoUtils::Watch<bool>(
-    [] {
-        for (auto & zone : zones) {
-            if (zone->heat()) {
-                return true;
+        [] {
+            for (auto &zone : zones) {
+                if (zone->heat()) {
+                    return true;
+                }
             }
-        }
-        return false;
-    },
-    [](bool demand) {
-        syslog.printf("Turning boiler %s.\n", demand ? "on" : "off");
-        heating_relay.set(demand);
-    }));
+            return false;
+        },
+        [](bool demand) {
+            syslog.printf("Turning boiler %s.\n", demand ? "on" : "off");
+            heating_relay.set(demand);
+        }));
 
     tickables.push_back(&healthcheck);
     tickables.push_back(&wifi_control);
@@ -214,6 +211,8 @@ void loop() {
     server.handleClient();
     picomq.loop();
     mqtt.loop();
-    for (auto & tickable : tickables) { tickable->tick(); }
+    for (auto &tickable : tickables) {
+        tickable->tick();
+    }
     HomeAssistant::tick();
 }

@@ -10,4 +10,4 @@ void tick();
 bool healthcheck();
 bool connected();
 
-};
+};  // namespace HomeAssistant

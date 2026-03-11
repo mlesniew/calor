@@ -1,14 +1,15 @@
-#include <cstdint>
-#include <Arduino.h>
-#include <Hash.h>
+#include "zone.h"
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Hash.h>
 #include <PicoSlugify.h>
 #include <PicoSyslog.h>
 
-#include "sensor.h"
+#include <cstdint>
+
 #include "schalter.h"
-#include "zone.h"
+#include "sensor.h"
 
 extern PicoSyslog::Logger syslog;
 
@@ -34,8 +35,7 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
       state(State::init),
       sensor(get_sensor(json["sensor"])),
       valve(get_schalter(json["valve"])),
-      boost_timeout(0) {
-}
+      boost_timeout(0) {}
 
 void Zone::tick() {
     sensor->tick();
@@ -48,16 +48,19 @@ void Zone::tick() {
         if (new_state == state) {
             return;
         }
-        syslog.printf("Zone '%s' changing state from %s to %s.\n", name.c_str(), to_c_str(state), to_c_str(new_state));
+        syslog.printf("Zone '%s' changing state from %s to %s.\n", name.c_str(),
+                      to_c_str(state), to_c_str(new_state));
         state = new_state;
     };
 
-    if (sensor->get_state() == AbstractSensor::State::error || (valve && valve->get_state() == Schalter::State::error)) {
+    if (sensor->get_state() == AbstractSensor::State::error ||
+        (valve && valve->get_state() == Schalter::State::error)) {
         set_state(State::error);
         return;
     }
 
-    if (sensor->get_state() == AbstractSensor::State::init || (valve && valve->get_state() == Schalter::State::init)) {
+    if (sensor->get_state() == AbstractSensor::State::init ||
+        (valve && valve->get_state() == Schalter::State::init)) {
         if (state != State::init) {
             set_state(State::init);
         }
@@ -83,7 +86,8 @@ void Zone::tick() {
 }
 
 bool Zone::heat() const {
-    return enabled && (state == State::heat) && (!valve || (valve->get_state() == Schalter::State::active));
+    return enabled && (state == State::heat) &&
+           (!valve || (valve->get_state() == Schalter::State::active));
 }
 
 JsonDocument Zone::get_config() const {
@@ -122,9 +126,7 @@ String Zone::unique_id() const {
     return sha1(String(name)).substring(0, 7);
 }
 
-bool Zone::healthcheck() const {
-    return state != State::error;
-}
+bool Zone::healthcheck() const { return state != State::error; }
 
 void Zone::boost(double timeout_seconds) {
     boost_stopwatch.reset();
@@ -135,10 +137,6 @@ bool Zone::boost_active() const {
     return boost_stopwatch.elapsed() < boost_timeout;
 }
 
-double Zone::get_reading() const {
-    return sensor->get_reading();
-}
+double Zone::get_reading() const { return sensor->get_reading(); }
 
-Zone::State Zone::get_state() const {
-    return state;
-}
+Zone::State Zone::get_state() const { return state; }

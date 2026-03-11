@@ -1,8 +1,9 @@
+#include "schalter.h"
+
 #include <PicoMQTT.h>
 #include <PicoSyslog.h>
 
 #include "mqtt.h"
-#include "schalter.h"
 
 extern PicoSyslog::Logger syslog;
 extern MQTTServer mqtt;
@@ -13,7 +14,7 @@ std::list<Schalter *> schalters;
 
 }
 
-const char * to_c_str(const Schalter::State & s) {
+const char *to_c_str(const Schalter::State &s) {
     switch (s) {
         case Schalter::State::init:
             return "init";
@@ -30,16 +31,15 @@ const char * to_c_str(const Schalter::State & s) {
     }
 }
 
-Schalter::Schalter(const String & name)
-    : name(name), last_request(false) {
-
+Schalter::Schalter(const String &name) : name(name), last_request(false) {
     if (!name.length()) {
         set_state(State::error);
         return;
     }
 
-    mqtt.subscribe("schalter/" + name, [this](const String & payload) {
-        Serial.printf("Got update on valve %s: %s\n", this->name.c_str(), payload.c_str());
+    mqtt.subscribe("schalter/" + name, [this](const String &payload) {
+        Serial.printf("Got update on valve %s: %s\n", this->name.c_str(),
+                      payload.c_str());
         if (payload == "ON") {
             set_state(State::active);
         } else if (payload == "OFF") {
@@ -49,22 +49,27 @@ Schalter::Schalter(const String & name)
         } else if (payload == "TOFF") {
             set_state(State::deactivating);
         } else {
-            syslog.printf("Invalid schalter state on valve %s: %s\n", this->name.c_str(), payload.c_str());
+            syslog.printf("Invalid schalter state on valve %s: %s\n",
+                          this->name.c_str(), payload.c_str());
         }
     });
-
 }
 
 void AbstractSchalter::set_state(State new_state) {
     if (state == new_state) {
         return;
     }
-    syslog.printf("Schalter %s changing state from %s to %s.\n", str().c_str(), to_c_str(state), to_c_str(new_state));
+    syslog.printf("Schalter %s changing state from %s to %s.\n", str().c_str(),
+                  to_c_str(state), to_c_str(new_state));
     state = new_state;
 }
 
-void AbstractSchalter::set_request(const void * requester, bool requesting) {
-    if (requesting) { requesters.insert(requester); } else { requesters.erase(requester); }
+void AbstractSchalter::set_request(const void *requester, bool requesting) {
+    if (requesting) {
+        requesters.insert(requester);
+    } else {
+        requesters.erase(requester);
+    }
 }
 
 void Schalter::publish_request() {
@@ -76,7 +81,8 @@ void Schalter::publish_request() {
 }
 
 void Schalter::tick() {
-    if ((last_request.elapsed_millis() >= 30 * 1000) || (last_request != has_activation_requests())) {
+    if ((last_request.elapsed_millis() >= 30 * 1000) ||
+        (last_request != has_activation_requests())) {
         publish_request();
     }
 
@@ -99,7 +105,7 @@ JsonDocument Schalter::get_config() const {
 String SchalterSet::str() const {
     String ret;
     bool first = true;
-    for (AbstractSchalter * schalter : schalters) {
+    for (AbstractSchalter *schalter : schalters) {
         if (first) {
             ret = schalter->str();
             first = false;
@@ -113,7 +119,7 @@ String SchalterSet::str() const {
 JsonDocument SchalterSet::get_config() const {
     JsonDocument json;
     size_t idx = 0;
-    for (AbstractSchalter * schalter : schalters) {
+    for (AbstractSchalter *schalter : schalters) {
         json[idx++] = schalter->get_config();
     }
     return json;
@@ -123,7 +129,7 @@ void SchalterSet::tick() {
     std::map<State, size_t> states;
     const bool activate = has_activation_requests() && is_ok();
 
-    for (AbstractSchalter * schalter : schalters) {
+    for (AbstractSchalter *schalter : schalters) {
         schalter->tick();
         states[schalter->get_state()] += 1;
         schalter->set_request(this, activate);
@@ -133,21 +139,24 @@ void SchalterSet::tick() {
         // if any element is in error state, we're in error state too
         set_state(State::error);
     } else if (states[State::init]) {
-        // if any element is in init state (but no errors), we're in init state too
+        // if any element is in init state (but no errors), we're in init state
+        // too
         set_state(State::init);
     } else if (has_activation_requests() && states[State::active]) {
         // at least one active element
         set_state(State::active);
-    } else if (!has_activation_requests() && (states[State::inactive] == schalters.size())) {
+    } else if (!has_activation_requests() &&
+               (states[State::inactive] == schalters.size())) {
         // only inactive elements, means we're inactive too
         set_state(State::inactive);
     } else {
         // states are different, we're transitioning
-        set_state(has_activation_requests() ? State::activating : State::deactivating);
+        set_state(has_activation_requests() ? State::activating
+                                            : State::deactivating);
     }
 }
 
-AbstractSchalter * get_schalter(const String & name) {
+AbstractSchalter *get_schalter(const String &name) {
     if (name.length() == 0) {
         return nullptr;
     }
@@ -164,13 +173,13 @@ AbstractSchalter * get_schalter(const String & name) {
     return schalter;
 }
 
-AbstractSchalter * get_schalter(const JsonVariantConst & json) {
+AbstractSchalter *get_schalter(const JsonVariantConst &json) {
     if (json.is<String>()) {
         return get_schalter(json.as<String>());
     } else if (json.is<JsonArrayConst>()) {
         std::list<AbstractSchalter *> elements;
-        for (const JsonVariantConst & value : json.as<JsonArrayConst>()) {
-            AbstractSchalter * element = get_schalter(value);
+        for (const JsonVariantConst &value : json.as<JsonArrayConst>()) {
+            AbstractSchalter *element = get_schalter(value);
             if (element) {
                 elements.push_back(element);
             }
