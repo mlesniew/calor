@@ -33,6 +33,9 @@ public:
     void boost(double timeout_seconds = 60 * 60);
     bool boost_active() const;
 
+    const AbstractSensor * get_sensor() const { return sensor; }
+    const AbstractSchalter * get_valve() const { return valve; }
+
     const String name;
     bool enabled;
     double desired;

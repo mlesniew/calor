@@ -31,8 +31,8 @@ Zone::Zone(const String & name, const JsonVariantConst & json)
       desired(json["desired"] | 21.0),
       hysteresis(json["hysteresis"] | 0.5),
       state(State::init),
-      sensor(get_sensor(json["sensor"])),
-      valve(get_schalter(json["valve"])),
+      sensor(::get_sensor(json["sensor"])),
+      valve(::get_schalter(json["valve"])),
       boost_timeout(0) {}
 
 void Zone::tick() {

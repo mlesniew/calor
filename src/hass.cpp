@@ -8,6 +8,8 @@
 
 #include <vector>
 
+#include "schalter.h"
+#include "sensor.h"
 #include "zone.h"
 
 extern PicoSyslog::Logger syslog;
@@ -90,6 +92,24 @@ void init() {
                 zone->boost(0);
             }
         };
+
+        PicoHA::Sensor<String> * sensor_state_sensor =
+            new PicoHA::Sensor<String>(*zone_device, "sensor_state",
+                                       "Sensor State");
+        sensor_state_sensor->icon = "thermometer";
+        sensor_state_sensor->getter = [zone] {
+            return to_c_str(zone->get_sensor()->get_state());
+        };
+        sensor_state_sensor->is_diagnostic = true;
+
+        PicoHA::Sensor<String> * schalter_state_sensor =
+            new PicoHA::Sensor<String>(*zone_device, "schalter_state",
+                                       "Schalter State");
+        schalter_state_sensor->icon = "electric-switch";
+        schalter_state_sensor->getter = [zone] {
+            return to_c_str(zone->get_valve()->get_state());
+        };
+        schalter_state_sensor->is_diagnostic = true;
     }
 
     mqtt.begin();

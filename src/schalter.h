@@ -22,7 +22,7 @@ public:
     virtual String str() const = 0;
     virtual JsonDocument get_config() const = 0;
 
-    void set_request(const void *requester, bool requesting);
+    void set_request(const void * requester, bool requesting);
 
     State get_state() const { return state; }
     bool is_ok() const { return state != State::error && state != State::init; }
@@ -52,7 +52,7 @@ protected:
 
 class Schalter : public AbstractSchalter {
 public:
-    Schalter(const String &name);
+    Schalter(const String & name);
     String str() const override { return name; }
 
     const String name;
@@ -69,5 +69,5 @@ protected:
     PicoUtils::TimedValue<bool> last_request;
 };
 
-const char *to_c_str(const Schalter::State &s);
-AbstractSchalter *get_schalter(const JsonVariantConst &json);
+const char * to_c_str(const Schalter::State & s);
+AbstractSchalter * get_schalter(const JsonVariantConst & json);
