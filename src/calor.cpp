@@ -42,7 +42,7 @@ MQTTServer mqtt;
 const char CONFIG_FILE[] PROGMEM = "/config.json";
 
 Zone * find_zone_by_name(const String & name) {
-    for (auto & zone_ptr : zones) {
+    for (auto zone_ptr : zones) {
         if (name == zone_ptr->name) {
             return zone_ptr;
         }
@@ -54,7 +54,7 @@ JsonDocument get_config() {
     JsonDocument json;
 
     auto zone_config = json["zones"].to<JsonObject>();
-    for (const auto & zone : zones) {
+    for (const auto zone : zones) {
         zone_config[zone->name] = zone->get_config();
     }
 
@@ -80,7 +80,7 @@ PicoUtils::PeriodicRun healthcheck(5, [] {
         ((WiFi.status() == WL_CONNECTED) && HomeAssistant::healthcheck()) ||
         (millis() <= 30 * 1000);
 
-    for (auto & zone : zones) {
+    for (const auto zone : zones) {
         healthy = healthy && zone->healthcheck();
     }
 
@@ -97,7 +97,7 @@ void setup_server() {
     server.on("/zones", HTTP_GET, [] {
         JsonDocument json;
 
-        for (const auto & zone : zones) {
+        for (const auto zone : zones) {
             json[zone->name] = zone->get_status();
         }
 
@@ -181,7 +181,7 @@ void setup() {
 
     tickables.push_back(new PicoUtils::Watch<bool>(
         [] {
-            for (auto & zone : zones) {
+            for (const auto zone : zones) {
                 if (zone->heat()) {
                     return true;
                 }
@@ -210,7 +210,7 @@ void loop() {
     server.handleClient();
     picomq.loop();
     mqtt.loop();
-    for (auto & tickable : tickables) {
+    for (auto tickable : tickables) {
         tickable->tick();
     }
     HomeAssistant::tick();
